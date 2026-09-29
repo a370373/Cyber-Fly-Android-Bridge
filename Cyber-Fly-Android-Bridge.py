@@ -155,10 +155,6 @@ PYTHON_STDLIB_DIR = str(
 
 # ------------------------------------------------------------
 # Bundled runtime environment
-#
-# Python itself is already running at this point, so these
-# variables are mainly inherited by child processes such as
-# FFmpeg and Python native extensions loaded later.
 # ------------------------------------------------------------
 
 _existing_ld_library_path = os.environ.get(
@@ -253,12 +249,6 @@ shutdown_event = threading.Event()
 # ============================================================
 
 def encode_json_message(message):
-    """
-    Cyber-Fly protocol：
-
-        4 bytes  big-endian JSON length
-        N bytes  UTF-8 JSON
-    """
 
     payload = json.dumps(
         message,
@@ -286,9 +276,6 @@ def encode_json_message(message):
 
 
 def receive_exact(sock, size):
-    """
-    Receive exactly `size` bytes.
-    """
 
     data = bytearray()
 
@@ -309,9 +296,6 @@ def receive_exact(sock, size):
 
 
 def receive_json_message(sock):
-    """
-    Receive one Cyber-Fly JSON message.
-    """
 
     header = receive_exact(
         sock,
@@ -352,14 +336,12 @@ def set_cyberfly_socket(sock):
     global cyberfly_socket
 
     with cyberfly_socket_lock:
-
         cyberfly_socket = sock
 
 
 def get_cyberfly_socket():
 
     with cyberfly_socket_lock:
-
         return cyberfly_socket
 
 
@@ -373,14 +355,12 @@ def clear_cyberfly_socket(sock=None):
             sock is None
             or cyberfly_socket is sock
         ):
-
             cyberfly_socket = None
 
 
 def close_cyberfly_socket(sock=None):
 
     if sock is None:
-
         sock = get_cyberfly_socket()
 
     if sock is None:
@@ -408,7 +388,6 @@ def send_to_cyberfly(message):
     sock = get_cyberfly_socket()
 
     if sock is None:
-
         return False
 
     try:
@@ -447,17 +426,6 @@ def execute_command(
     command,
     wait=False,
 ):
-    """
-    執行 Android UID 2000 Shell command。
-
-    TEST_MODE=True：
-
-        只顯示 command。
-
-    TEST_MODE=False：
-
-        真正執行。
-    """
 
     print(
         "[ANDROID]",
@@ -492,12 +460,6 @@ def execute_command(
 def choose_coordinates(
     semantic
 ):
-    """
-    CLICK / DOUBLE_CLICK / LONG_PRESS / SWIPE：
-
-        從 coordinates.py 的座標集合中
-        隨機選擇一個到全部。
-    """
 
     coordinates = COORDINATES.get(
         semantic
@@ -520,13 +482,6 @@ def choose_coordinates(
 def choose_move_coordinate(
     semantic
 ):
-    """
-    MOVE：
-
-        (start_x, start_y)
-            →
-        (end_x, end_y)
-    """
 
     move = MOVE_COORDINATES.get(
         semantic
@@ -565,20 +520,15 @@ class ActiveAction:
         self.thread = None
 
 
-def register_action(
-    action
-):
+def register_action(action):
 
     with active_actions_lock:
-
         active_actions.append(
             action
         )
 
 
-def unregister_action(
-    action
-):
+def unregister_action(action):
 
     with active_actions_lock:
 
@@ -589,9 +539,7 @@ def unregister_action(
             )
 
 
-def terminate_action_process(
-    action
-):
+def terminate_action_process(action):
 
     process = action.process
 
@@ -599,11 +547,8 @@ def terminate_action_process(
         return
 
     try:
-
         process.terminate()
-
     except Exception:
-
         pass
 
     action.process = None
@@ -618,17 +563,6 @@ def hold_at_position(
     x,
     y,
 ):
-    """
-    在指定位置持續按住。
-
-    RELEASE：
-
-        stop_event
-            ↓
-        terminate subprocess
-            ↓
-        touch release
-    """
 
     command = (
         f"input swipe "
@@ -700,22 +634,7 @@ def hold_at_position(
 # MOVE
 # ============================================================
 
-def move_worker(
-    action
-):
-    """
-    MOVE：
-
-        實測起點
-            ↓
-        實測終點
-            ↓
-        抵達
-            ↓
-        持續按住
-            ↓
-        RELEASE
-    """
+def move_worker(action):
 
     start, end = action.coordinate
 
@@ -766,10 +685,6 @@ def move_worker(
 
     try:
 
-        # ----------------------------------------------------
-        # Phase 1
-        # ----------------------------------------------------
-
         process = subprocess.Popen(
             slide_command,
             shell=True,
@@ -795,10 +710,6 @@ def move_worker(
 
         if action.stop_event.is_set():
             return
-
-        # ----------------------------------------------------
-        # Phase 2
-        # ----------------------------------------------------
 
         hold_at_position(
             action,
@@ -826,11 +737,6 @@ def random_swipe_endpoint(
     start_x,
     start_y,
 ):
-    """
-    SWIPE endpoint 由 Bridge 隨機決定。
-
-    不從 endpoint 推導任何意圖。
-    """
 
     directions = [
         (-1, 0),
@@ -934,9 +840,7 @@ def execute_swipe(
 # LONG PRESS
 # ============================================================
 
-def long_press_worker(
-    action
-):
+def long_press_worker(action):
 
     x, y = action.coordinate
 
@@ -1094,13 +998,6 @@ def release_actions():
 def handle_semantic(
     semantic
 ):
-    """
-    Cyber-Fly action → Android operation。
-
-    不猜測。
-    不補全。
-    不重新解釋。
-    """
 
     if not isinstance(
         semantic,
@@ -1266,23 +1163,6 @@ def handle_semantic(
 def handle_action_message(
     message
 ):
-    """
-    Cyber-Fly 現行 ActionMessage：
-
-        {
-            "type": "action",
-            "action": "click",
-            "parameters": {
-                ...
-            }
-        }
-
-    parameters 保留給 platform-independent
-    protocol。
-
-    Android Bridge 的座標策略仍由
-    coordinates.py 決定。
-    """
 
     if message.get("type") != "action":
 
@@ -1539,14 +1419,6 @@ class JPEGParser:
 def jpeg_dimensions(
     data
 ):
-    """
-    從 JPEG SOF marker 取得：
-
-        width
-        height
-
-    不需要額外 Python image library。
-    """
 
     if len(data) < 10:
         return None
@@ -1654,9 +1526,6 @@ def send_rgb_frame(
     width,
     height,
 ):
-    """
-    將 RGB24 raw frame 包成 Cyber-Fly frame message。
-    """
 
     expected = (
         width
@@ -1741,11 +1610,35 @@ class ScrcpyStream:
             "-loglevel",
             "quiet",
 
+            # ------------------------------------------------
+            # Live raw H.264 input.
+            #
+            # scrcpy raw_stream=true provides an elementary
+            # H.264 stream without scrcpy packet metadata.
+            #
+            # Give FFmpeg enough input to discover SPS/PPS
+            # and stream parameters before decoding.
+            # ------------------------------------------------
+
+            "-analyzeduration",
+            "10000000",
+
+            "-probesize",
+            "10000000",
+
+            "-fflags",
+            "nobuffer",
+
+            "-flags",
+            "low_delay",
+
             "-f",
             "h264",
 
             "-i",
             "pipe:0",
+
+            "-an",
 
             "-f",
             "mjpeg",
@@ -1762,6 +1655,7 @@ class ScrcpyStream:
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
+                bufsize=0,
             )
         )
 
@@ -1777,11 +1671,16 @@ class ScrcpyStream:
             "-loglevel",
             "quiet",
 
+            "-fflags",
+            "nobuffer",
+
             "-f",
             "mjpeg",
 
             "-i",
             "pipe:0",
+
+            "-an",
 
             "-f",
             "rawvideo",
@@ -1798,6 +1697,7 @@ class ScrcpyStream:
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
+                bufsize=0,
             )
         )
 
@@ -1818,11 +1718,15 @@ class ScrcpyStream:
                 if not data:
                     break
 
-                self.ffmpeg_process.stdin.write(
-                    data
-                )
+                try:
 
-                self.ffmpeg_process.stdin.flush()
+                    self.ffmpeg_process.stdin.write(
+                        data
+                    )
+
+                except BrokenPipeError:
+
+                    break
 
         except Exception as e:
 
@@ -1876,12 +1780,6 @@ class ScrcpyStream:
 
                         if dimensions is None:
 
-                            print(
-                                "[FRAME] "
-                                "could not determine "
-                                "JPEG dimensions"
-                            )
-
                             continue
 
                         self.width, self.height = (
@@ -1895,11 +1793,15 @@ class ScrcpyStream:
                             f"{self.height}"
                         )
 
-                    self.decoder_process.stdin.write(
-                        frame
-                    )
+                    try:
 
-                    self.decoder_process.stdin.flush()
+                        self.decoder_process.stdin.write(
+                            frame
+                        )
+
+                    except BrokenPipeError:
+
+                        return
 
         except Exception as e:
 
@@ -1918,16 +1820,6 @@ class ScrcpyStream:
                 pass
 
     def read_decoder(self):
-
-        if (
-            self.width is None
-            or self.height is None
-        ):
-
-            print(
-                "[DECODER] waiting for "
-                "frame dimensions"
-            )
 
         raw_buffer = bytearray()
 
@@ -1999,7 +1891,6 @@ class ScrcpyStream:
                 self.socket.close()
 
         except Exception:
-
             pass
 
         try:
@@ -2009,10 +1900,26 @@ class ScrcpyStream:
                 is not None
             ):
 
+                if (
+                    self.ffmpeg_process.stdin
+                    is not None
+                ):
+
+                    try:
+                        self.ffmpeg_process.stdin.close()
+                    except Exception:
+                        pass
+
                 self.ffmpeg_process.kill()
 
-        except Exception:
+                try:
+                    self.ffmpeg_process.wait(
+                        timeout=1
+                    )
+                except Exception:
+                    pass
 
+        except Exception:
             pass
 
         try:
@@ -2022,10 +1929,26 @@ class ScrcpyStream:
                 is not None
             ):
 
+                if (
+                    self.decoder_process.stdin
+                    is not None
+                ):
+
+                    try:
+                        self.decoder_process.stdin.close()
+                    except Exception:
+                        pass
+
                 self.decoder_process.kill()
 
-        except Exception:
+                try:
+                    self.decoder_process.wait(
+                        timeout=1
+                    )
+                except Exception:
+                    pass
 
+        except Exception:
             pass
 
         self.socket = None
