@@ -473,6 +473,20 @@ echo "[INFO] audio        : false"
 echo "[INFO] control      : false"
 echo
 
+# ------------------------------------------------------------
+# IMPORTANT:
+#
+# Python requires the bundled LD_LIBRARY_PATH above.
+#
+# Android app_process must NOT inherit that Python/FFmpeg
+# library path because it interferes with Android's own
+# linker namespace and system libraries.
+#
+# Therefore LD_LIBRARY_PATH is explicitly removed only
+# for app_process.
+# ------------------------------------------------------------
+
+env -u LD_LIBRARY_PATH \
 CLASSPATH="$SERVER" \
 app_process / \
 com.genymobile.scrcpy.Server \
