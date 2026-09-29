@@ -1682,6 +1682,10 @@ class ScrcpyPipeline:
 
         self.rgb_thread = None
 
+        self.ffmpeg_error_thread = None
+
+        self.decoder_error_thread = None
+
         self.failure_reason = None
 
 
@@ -1737,6 +1741,27 @@ class ScrcpyPipeline:
             "[FFMPEG] H264 -> MJPEG started"
         )
 
+        # ----------------------------------------------------
+        # IMPORTANT DEBUG:
+        #
+        # FFmpeg stderr must be drained continuously.
+        #
+        # Otherwise the stderr pipe can fill and FFmpeg may
+        # block even though stdout looks alive.
+        # ----------------------------------------------------
+
+        self.ffmpeg_error_thread = threading.Thread(
+            target=self.read_process_error,
+            args=(
+                self.ffmpeg_process,
+                "FFMPEG H264",
+            ),
+            name="CyberFly-FFmpeg-Error",
+            daemon=True,
+        )
+
+        self.ffmpeg_error_thread.start()
+
 
     # --------------------------------------------------------
     # Start MJPEG -> RGB24
@@ -1781,6 +1806,22 @@ class ScrcpyPipeline:
             "[FFMPEG] MJPEG -> RGB24 started"
         )
 
+        # ----------------------------------------------------
+        # IMPORTANT DEBUG:
+        # ----------------------------------------------------
+
+        self.decoder_error_thread = threading.Thread(
+            target=self.read_process_error,
+            args=(
+                self.decoder_process,
+                "FFMPEG MJPEG",
+            ),
+            name="CyberFly-Decoder-Error",
+            daemon=True,
+        )
+
+        self.decoder_error_thread.start()
+
 
     # --------------------------------------------------------
     # Read FFmpeg stderr
@@ -1793,11 +1834,13 @@ class ScrcpyPipeline:
     ):
 
         if process is None:
+
             return
 
         stderr = process.stderr
 
         if stderr is None:
+
             return
 
         try:
@@ -1821,13 +1864,19 @@ class ScrcpyPipeline:
                 if text:
 
                     print(
-                        f"[{name}]",
+                        f"[{name} ERROR]",
                         text,
                     )
 
-        except Exception:
+        except Exception as e:
 
-            pass
+            if not shutdown_event.is_set():
+
+                print(
+                    f"[{name} DEBUG] "
+                    f"stderr reader stopped:",
+                    e,
+                )
 
 
     # --------------------------------------------------------
@@ -2046,6 +2095,16 @@ class ScrcpyPipeline:
 
                 if process.poll() is not None:
 
+                    returncode = (
+                        process.returncode
+                    )
+
+                    print(
+                        "[FFMPEG] H264 -> MJPEG "
+                        f"exited with code "
+                        f"{returncode}"
+                    )
+
                     self.failure_reason = (
                         "FFmpeg exited"
                     )
@@ -2059,6 +2118,16 @@ class ScrcpyPipeline:
                 )
 
                 if not data:
+
+                    returncode = (
+                        process.poll()
+                    )
+
+                    print(
+                        "[FFMPEG] H264 -> MJPEG "
+                        f"output EOF "
+                        f"(returncode={returncode})"
+                    )
 
                     self.failure_reason = (
                         "FFmpeg output EOF"
@@ -2115,6 +2184,11 @@ class ScrcpyPipeline:
                         BrokenPipeError,
                         OSError,
                     ):
+
+                        print(
+                            "[FFMPEG] MJPEG -> RGB24 "
+                            "stdin closed"
+                        )
 
                         self.failure_reason = (
                             "decoder stdin closed"
@@ -2181,6 +2255,16 @@ class ScrcpyPipeline:
 
                 if process.poll() is not None:
 
+                    returncode = (
+                        process.returncode
+                    )
+
+                    print(
+                        "[FFMPEG] MJPEG -> RGB24 "
+                        f"exited with code "
+                        f"{returncode}"
+                    )
+
                     self.failure_reason = (
                         "decoder exited"
                     )
@@ -2194,6 +2278,15 @@ class ScrcpyPipeline:
                 )
 
                 if not data:
+
+                    returncode = (
+                        process.poll()
+                    )
+
+                    print(
+                        "[DECODER] output EOF "
+                        f"(returncode={returncode})"
+                    )
 
                     self.failure_reason = (
                         "decoder output EOF"
@@ -2243,6 +2336,7 @@ class ScrcpyPipeline:
                     #
                     # send_rgb_frame() returning False
                     # does NOT stop this pipeline.
+
                     send_rgb_frame(
                         frame,
                         self.width,
@@ -2325,6 +2419,8 @@ class ScrcpyPipeline:
             self.input_thread,
             self.mjpeg_thread,
             self.rgb_thread,
+            self.ffmpeg_error_thread,
+            self.decoder_error_thread,
         )
 
         self.stop_process(
@@ -2401,6 +2497,10 @@ class ScrcpyPipeline:
         self.mjpeg_thread = None
 
         self.rgb_thread = None
+
+        self.ffmpeg_error_thread = None
+
+        self.decoder_error_thread = None
 
 
     # --------------------------------------------------------
@@ -2485,6 +2585,18 @@ class ScrcpyPipeline:
                 or ffmpeg_process.poll() is not None
             ):
 
+                returncode = (
+                    None
+                    if ffmpeg_process is None
+                    else ffmpeg_process.returncode
+                )
+
+                print(
+                    "[PIPELINE] H264 -> MJPEG "
+                    f"process exited "
+                    f"(returncode={returncode})"
+                )
+
                 self.failure_reason = (
                     "FFmpeg process exited"
                 )
@@ -2497,6 +2609,18 @@ class ScrcpyPipeline:
                 decoder_process is None
                 or decoder_process.poll() is not None
             ):
+
+                returncode = (
+                    None
+                    if decoder_process is None
+                    else decoder_process.returncode
+                )
+
+                print(
+                    "[PIPELINE] MJPEG -> RGB24 "
+                    f"process exited "
+                    f"(returncode={returncode})"
+                )
 
                 self.failure_reason = (
                     "decoder process exited"
@@ -2547,10 +2671,6 @@ class ScrcpyPipeline:
 
                     continue
 
-                # At this point a worker actually died
-                # while the processes are still alive.
-                #
-                # Stop this generation cleanly.
                 self.failure_reason = (
                     "pipeline worker stopped"
                 )
