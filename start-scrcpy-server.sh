@@ -55,14 +55,12 @@ SERVER_SOURCE="$SCRIPT_DIR/scrcpy-server.jar"
 SERVER="/data/local/tmp/scrcpy-server.jar"
 
 PYTHON_ROOT="$SCRIPT_DIR/Python"
-
 PYTHON="$PYTHON_ROOT/bin/python"
 
 PYTHON_LIB="$PYTHON_ROOT/lib"
 PYTHON_STDLIB="$PYTHON_ROOT/lib/python3.14"
 
 FFMPEG_ROOT="$SCRIPT_DIR/FFmpeg FFprobe"
-
 FFMPEG_LIB="$FFMPEG_ROOT/lib"
 
 HOST="127.0.0.1"
@@ -107,9 +105,6 @@ echo "     $SERVER_SOURCE"
 
 # ------------------------------------------------------------
 # Stage scrcpy server
-#
-# The project keeps the canonical copy.
-# app_process uses the runtime copy in /data/local/tmp.
 # ------------------------------------------------------------
 
 echo
@@ -159,10 +154,6 @@ echo "     $PYTHON"
 
 # ------------------------------------------------------------
 # Python runtime environment
-#
-# Python was copied out of Termux.
-# Force it to use the bundled runtime instead of the
-# original Termux prefix.
 # ------------------------------------------------------------
 
 export PYTHONHOME="$PYTHON_ROOT"
@@ -170,9 +161,6 @@ export PYTHONPATH="$PYTHON_STDLIB"
 
 # ------------------------------------------------------------
 # Bundled native libraries
-#
-# Both Python and FFmpeg may need libraries copied into the
-# project runtime.
 # ------------------------------------------------------------
 
 OLD_LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
@@ -228,15 +216,6 @@ fi
 
 # ------------------------------------------------------------
 # Start UID 2000 local TCP relay
-#
-# TCP:
-#     127.0.0.1:1234
-#
-# forwards raw bytes to:
-#
-#     @scrcpy
-#
-# Android localabstract socket.
 # ------------------------------------------------------------
 
 echo "[INFO] Starting local TCP relay..."
@@ -450,6 +429,8 @@ finally:
             server_socket.close()
     except Exception:
         pass
+
+PYTHON
 
 PYTHON_RELAY_PID=$!
 
