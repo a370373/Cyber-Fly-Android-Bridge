@@ -1,0 +1,14 @@
+prefix=/data/data/com.termux/files/usr
+exec_prefix=${prefix}
+libdir=/data/data/com.termux/files/usr/lib
+includedir=/data/data/com.termux/files/usr/include
+
+Name: libavutil
+Description: FFmpeg utility library
+Version: 60.26.103
+Requires: 
+Requires.private: 
+Conflicts:
+Libs: -L${libdir}  -lavutil 
+Libs.private: -lm -L/data/data/com.termux/files/usr/lib -lz -L/data/data/com.termux/files/usr/lib -lOpenCL -L/data/data/com.termux/files/usr/lib -lssl -lcrypto -latomic -landroid -lmediandk -pthread -L/data/data/com.termux/files/usr/lib -lX11
+Cflags: -I${includedir}

@@ -1,0 +1,11 @@
+prefix=/data/data/com.termux/files/usr
+exec_prefix=${prefix}
+libdir=/data/data/com.termux/files/usr/lib
+includedir=/data/data/com.termux/files/usr/include
+
+Name: XCB Damage
+Description: XCB Damage Extension
+Version: 1.17.0
+Requires.private: xcb xcb-xfixes
+Libs: -L${libdir} -lxcb-damage
+Cflags: -I${includedir}

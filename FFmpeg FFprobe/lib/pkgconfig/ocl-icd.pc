@@ -1,0 +1,11 @@
+prefix=/data/data/com.termux/files/usr
+exec_prefix=${prefix}
+libdir=/data/data/com.termux/files/usr/lib
+includedir=/data/data/com.termux/files/usr/include
+
+Name: ocl-icd
+Description: Open Computing Language generic Installable Client Driver support
+Requires: OpenCL-Headers
+Version: 2.3.5
+Libs: -L${libdir}
+Cflags: -I${includedir}

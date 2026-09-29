@@ -1,0 +1,11 @@
+prefix=/data/data/com.termux/files/usr
+exec_prefix=${prefix}
+libdir=/data/data/com.termux/files/usr/lib
+includedir=/data/data/com.termux/files/usr/include
+
+Name: XCB Composite
+Description: XCB Composite Extension
+Version: 1.17.0
+Requires.private: xcb xcb-xfixes
+Libs: -L${libdir} -lxcb-composite
+Cflags: -I${includedir}

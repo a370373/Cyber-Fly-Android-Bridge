@@ -1,0 +1,14 @@
+# theoradec installed pkg-config file
+
+prefix=/data/data/com.termux/files/usr
+exec_prefix=${prefix}
+libdir=/data/data/com.termux/files/usr/lib
+includedir=/data/data/com.termux/files/usr/include
+
+Name: theora
+Description: Theora video codec (decoder)
+Version: 1.2.0
+Requires: ogg >= 1.3.4
+Conflicts:
+Libs: -L${libdir} -ltheoradec
+Cflags: -I${includedir}

@@ -1,0 +1,11 @@
+Name: libmysofa
+Description: SOFA file reader for better HRTFs
+Version: 1.3
+Requires: 
+includedir=/data/data/com.termux/files/usr/include
+libdir=/data/data/com.termux/files/usr/lib
+Libs: -L${libdir} -lmysofa
+Cflags: -I${includedir}
+
+Libs.private: -lz -lm 
+#Requires.private:

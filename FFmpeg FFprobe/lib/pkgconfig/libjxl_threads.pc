@@ -1,0 +1,13 @@
+prefix=/data/data/com.termux/files/usr
+exec_prefix=${prefix}
+libdir=/data/data/com.termux/files/usr/lib
+includedir=/data/data/com.termux/files/usr/include
+
+Name: libjxl_threads
+Description: JPEG XL multi-thread runner using std::threads.
+Version: 0.12.0
+Requires.private: 
+Libs: -L${libdir} -ljxl_threads
+Libs.private: -lm
+Cflags: -I${includedir}
+Cflags.private: -DJXL_THREADS_STATIC_DEFINE

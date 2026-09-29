@@ -1,0 +1,13 @@
+prefix=/data/data/com.termux/files/usr
+exec_prefix=${prefix}
+libdir=/data/data/com.termux/files/usr/lib
+includedir=/data/data/com.termux/files/usr/include
+
+Name: libjxl_cms
+Description: CMS support library for libjxl
+Version: 0.12.0
+Requires.private: 
+Libs: -L${libdir} -ljxl_cms 
+Libs.private: -lm -lc++
+Cflags: -I${includedir}
+Cflags.private: -DJXL_CMS_STATIC_DEFINE

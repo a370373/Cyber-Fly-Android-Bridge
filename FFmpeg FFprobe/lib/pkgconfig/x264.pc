@@ -1,0 +1,11 @@
+prefix=/data/data/com.termux/files/usr
+exec_prefix=${prefix}
+libdir=/data/data/com.termux/files/usr/lib
+includedir=/data/data/com.termux/files/usr/include
+
+Name: x264
+Description: H.264 (MPEG4 AVC) encoder library
+Version: 0.164.x
+Libs: -L/data/data/com.termux/files/usr/lib -lx264 
+Libs.private: -lpthread -lm -ldl
+Cflags: -I/data/data/com.termux/files/usr/include -DX264_API_IMPORTS

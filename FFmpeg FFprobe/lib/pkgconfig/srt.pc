@@ -1,0 +1,12 @@
+prefix=/data/data/com.termux/files/usr
+exec_prefix=${prefix}
+libdir=lib
+includedir=${prefix}/include
+
+Name: srt
+Description: SRT library set
+Version: 1.5.6
+Libs: -L${libdir} -lsrt   
+Libs.private:  -lpthread -lc++ -lm -l:libunwind.a -ldl -lc -l:libunwind.a -ldl
+Cflags: -I${includedir} -I${includedir}/srt
+Requires.private: openssl libcrypto

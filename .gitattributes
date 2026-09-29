@@ -1,0 +1,2 @@
+Python/lib/libLLVM.so filter=lfs diff=lfs merge=lfs -text
+Python/lib/libclang-cpp.so filter=lfs diff=lfs merge=lfs -text

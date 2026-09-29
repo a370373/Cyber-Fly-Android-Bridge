@@ -1,0 +1,14 @@
+prefix=/data/data/com.termux/files/usr
+exec_prefix=${prefix}
+libdir=/data/data/com.termux/files/usr/lib
+includedir=/data/data/com.termux/files/usr/include
+
+Name: libswscale
+Description: FFmpeg image rescaling library
+Version: 9.5.103
+Requires: 
+Requires.private: libavutil >= 60.26.103
+Conflicts:
+Libs: -L${libdir}  -lswscale 
+Libs.private: -lm -latomic -lglslang -lMachineIndependent -lGenericCodeGen -lSPIRV -lSPIRV-Tools-opt -lSPIRV-Tools -lstdc++ -lm -pthread
+Cflags: -I${includedir}

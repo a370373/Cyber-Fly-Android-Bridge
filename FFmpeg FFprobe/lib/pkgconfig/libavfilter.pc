@@ -1,0 +1,14 @@
+prefix=/data/data/com.termux/files/usr
+exec_prefix=${prefix}
+libdir=/data/data/com.termux/files/usr/lib
+includedir=/data/data/com.termux/files/usr/include
+
+Name: libavfilter
+Description: FFmpeg audio/video filtering library
+Version: 11.14.103
+Requires: 
+Requires.private: libswscale >= 9.5.103, libavformat >= 62.12.103, libavcodec >= 62.28.103, libswresample >= 6.3.103, libavutil >= 60.26.103
+Conflicts:
+Libs: -L${libdir}  -lavfilter 
+Libs.private: -pthread -lm -latomic -L/data/data/com.termux/files/usr/lib -lz -L/data/data/com.termux/files/usr/lib -lbs2b -L/data/data/com.termux/files/usr/lib -lrubberband -lfftw3 -lsamplerate -lstdc++ -L/data/data/com.termux/files/usr/lib -lmysofa -L/data/data/com.termux/files/usr/lib -lharfbuzz -L/data/data/com.termux/files/usr/lib -lfribidi -L/data/data/com.termux/files/usr/lib -llcms2 -L/data/data/com.termux/files/usr/lib -lplacebo -L/data/data/com.termux/files/usr/lib -lvmaf -L/data/data/com.termux/files/usr/lib -lass -L/data/data/com.termux/files/usr/lib -lvidstab -lm -fopenmp=libomp -L/data/data/com.termux/files/usr/lib -lzmq -L/data/data/com.termux/files/usr/lib -lzimg -lglslang -lMachineIndependent -lGenericCodeGen -lSPIRV -lSPIRV-Tools-opt -lSPIRV-Tools -lstdc++ -lm -pthread -L/data/data/com.termux/files/usr/lib -lOpenCL -L/data/data/com.termux/files/usr/lib -lfontconfig -lfreetype -L/data/data/com.termux/files/usr/lib -lfreetype
+Cflags: -I${includedir}

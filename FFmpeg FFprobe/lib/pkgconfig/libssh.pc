@@ -1,0 +1,11 @@
+prefix=/data/data/com.termux/files/usr
+exec_prefix=${prefix}
+libdir=/data/data/com.termux/files/usr/lib
+includedir=/data/data/com.termux/files/usr/include
+
+Name: libssh
+Description: The SSH Library
+Version: 0.12.2
+Libs: -L${libdir} -lssh
+Cflags: -I${includedir}
+Requires.private: 

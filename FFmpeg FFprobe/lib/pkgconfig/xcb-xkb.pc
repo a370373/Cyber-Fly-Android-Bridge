@@ -1,0 +1,11 @@
+prefix=/data/data/com.termux/files/usr
+exec_prefix=${prefix}
+libdir=/data/data/com.termux/files/usr/lib
+includedir=/data/data/com.termux/files/usr/include
+
+Name: XCB XKB
+Description: XCB Keyboard Extension (EXPERIMENTAL)
+Version: 1.17.0
+Requires.private: xcb
+Libs: -L${libdir} -lxcb-xkb
+Cflags: -I${includedir}

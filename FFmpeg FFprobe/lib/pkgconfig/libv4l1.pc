@@ -1,0 +1,12 @@
+prefix=/data/data/com.termux/files/usr
+exec_prefix=${prefix}
+includedir=/data/data/com.termux/files/usr/include
+libdir=/data/data/com.termux/files/usr/lib
+
+Name: libv4l1
+Description: v4l1 compatibility library
+Version: 1.24.1
+Requires.private: libv4l2
+Libs: -L${libdir} -lv4l1
+Libs.private: -lpthread
+Cflags: -I${includedir}

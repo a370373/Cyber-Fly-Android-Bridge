@@ -1,0 +1,11 @@
+prefix=/data/data/com.termux/files/usr
+exec_prefix=${prefix}
+includedir=/data/data/com.termux/files/usr/include
+libdir=/data/data/com.termux/files/usr/lib
+
+Name: libv4lconvert
+Description: v4l format conversion library
+Version: 1.24.1
+Libs: -L${libdir} -lv4lconvert
+Libs.private: -lrt -lm -ljpeg
+Cflags: -I${includedir}

@@ -1,0 +1,13 @@
+prefix=/data/data/com.termux/files/usr
+exec_prefix=${prefix}
+includedir=/data/data/com.termux/files/usr/include
+libdir=/data/data/com.termux/files/usr/lib
+
+Name: SvtAv1Enc
+Description: SVT (Scalable Video Technology) for AV1 encoder library
+Version: 4.2.0
+Requires.private: 
+Libs: -L${libdir} -lSvtAv1Enc
+Libs.private: -lpthread -lm
+Cflags: -I${includedir}/svt-av1 -DEB_DLL -DRTC_BUILD=0
+Cflags.private: -UEB_DLL

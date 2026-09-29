@@ -1,0 +1,14 @@
+prefix=/data/data/com.termux/files/usr
+exec_prefix=${prefix}
+libdir=/data/data/com.termux/files/usr/lib
+includedir=/data/data/com.termux/files/usr/include
+
+Name: libavdevice
+Description: FFmpeg device handling library
+Version: 62.3.103
+Requires: 
+Requires.private: libavfilter >= 11.14.103, libswscale >= 9.5.103, libavformat >= 62.12.103, libavcodec >= 62.28.103, libswresample >= 6.3.103, libavutil >= 60.26.103
+Conflicts:
+Libs: -L${libdir}  -lavdevice 
+Libs.private: -lm -latomic -L/data/data/com.termux/files/usr/lib -lxcb -L/data/data/com.termux/files/usr/lib -lxcb-shm -L/data/data/com.termux/files/usr/lib -lxcb-shape -L/data/data/com.termux/files/usr/lib -lxcb-xfixes
+Cflags: -I${includedir}
