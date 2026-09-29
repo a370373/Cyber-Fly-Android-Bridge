@@ -29,16 +29,20 @@ Android UID 2000 Shell
         ↓
      input
 
+
 核心原則：
 
     Bridge 不解讀 MaleCNS 的真正意圖。
+
     Bridge 只負責把 Cyber-Fly 已定義的
     platform-independent action 映射成 Android 操作。
+
 
 Cyber-Fly protocol：
 
     4 bytes  big-endian payload length
     N bytes  UTF-8 JSON
+
 
 Bridge → Cyber-Fly：
 
@@ -49,6 +53,7 @@ Bridge → Cyber-Fly：
         "channels": 3,
         "pixels": "<base64 RGB bytes>"
     }
+
 
 Cyber-Fly → Bridge：
 
@@ -64,6 +69,7 @@ Cyber-Fly → Bridge：
             "key": ...
         }
     }
+
 
 Android action mapping：
 
@@ -94,11 +100,25 @@ Android action mapping：
     move_right
         → MOVE_RIGHT
 
+
 Unsupported Cyber-Fly actions：
 
     ignored
 
-Bridge 不猜測未知 action 的意思。
+
+重要：
+
+    Cyber-Fly 連線生命週期與 scrcpy/FFmpeg
+    影像生命週期完全分離。
+
+    Cyber-Fly :8765 沒有啟動時：
+
+        FFmpeg 不重啟
+        scrcpy 不重啟
+        frame 直接丟棄
+
+    只有真正的 FFmpeg / decoder / scrcpy
+    故障才會觸發相應的重建。
 """
 
 import base64
@@ -153,9 +173,9 @@ PYTHON_STDLIB_DIR = str(
 )
 
 
-# ------------------------------------------------------------
-# Bundled runtime environment
-# ------------------------------------------------------------
+# ============================================================
+# Bundled Runtime Environment
+# ============================================================
 
 _existing_ld_library_path = os.environ.get(
     "LD_LIBRARY_PATH",
@@ -189,37 +209,17 @@ from coordinates import (
 # Configuration
 # ============================================================
 
-# ------------------------------------------------------------
-# Cyber-Fly
-# ------------------------------------------------------------
-
 CYBERFLY_HOST = "127.0.0.1"
 CYBERFLY_PORT = 8765
 
 MAX_MESSAGE_SIZE = 16 * 1024 * 1024
 
-# ------------------------------------------------------------
-# Android / scrcpy
-# ------------------------------------------------------------
-
 SCRCPY_HOST = "127.0.0.1"
 SCRCPY_PORT = 1234
 
-# ------------------------------------------------------------
-# Android shell
-# ------------------------------------------------------------
-
 TEST_MODE = True
 
-# ------------------------------------------------------------
-# FFmpeg
-# ------------------------------------------------------------
-
 JPEG_QUALITY = 5
-
-# ------------------------------------------------------------
-# Touch
-# ------------------------------------------------------------
 
 SWIPE_DURATION_MIN = 1000
 SWIPE_DURATION_MAX = 2000
@@ -227,6 +227,19 @@ SWIPE_DURATION_MAX = 2000
 HOLD_DURATION = 60000
 
 DOUBLE_CLICK_INTERVAL = 0.08
+
+
+# ------------------------------------------------------------
+# Pipeline timing
+# ------------------------------------------------------------
+
+PIPELINE_RESTART_DELAY = 1.0
+
+SCRCPY_RECONNECT_DELAY = 1.0
+
+CYBERFLY_RECONNECT_DELAY = 1.0
+
+SOCKET_POLL_TIMEOUT = 0.5
 
 
 # ============================================================
@@ -336,12 +349,30 @@ def set_cyberfly_socket(sock):
     global cyberfly_socket
 
     with cyberfly_socket_lock:
+
+        old = cyberfly_socket
+
         cyberfly_socket = sock
+
+    if old is not None and old is not sock:
+
+        try:
+            old.shutdown(
+                socket.SHUT_RDWR
+            )
+        except Exception:
+            pass
+
+        try:
+            old.close()
+        except Exception:
+            pass
 
 
 def get_cyberfly_socket():
 
     with cyberfly_socket_lock:
+
         return cyberfly_socket
 
 
@@ -355,12 +386,14 @@ def clear_cyberfly_socket(sock=None):
             sock is None
             or cyberfly_socket is sock
         ):
+
             cyberfly_socket = None
 
 
 def close_cyberfly_socket(sock=None):
 
     if sock is None:
+
         sock = get_cyberfly_socket()
 
     if sock is None:
@@ -371,14 +404,18 @@ def close_cyberfly_socket(sock=None):
     )
 
     try:
+
         sock.shutdown(
             socket.SHUT_RDWR
         )
+
     except Exception:
         pass
 
     try:
+
         sock.close()
+
     except Exception:
         pass
 
@@ -388,6 +425,13 @@ def send_to_cyberfly(message):
     sock = get_cyberfly_socket()
 
     if sock is None:
+
+        # Cyber-Fly is offline.
+        #
+        # This is normal.
+        #
+        # IMPORTANT:
+        # This must NEVER affect FFmpeg.
         return False
 
     try:
@@ -433,6 +477,7 @@ def execute_command(
     )
 
     if TEST_MODE:
+
         return None
 
     if wait:
@@ -466,6 +511,7 @@ def choose_coordinates(
     )
 
     if not coordinates:
+
         return []
 
     count = random.randint(
@@ -488,6 +534,7 @@ def choose_move_coordinate(
     )
 
     if move is None:
+
         return None
 
     start, end = move
@@ -523,6 +570,7 @@ class ActiveAction:
 def register_action(action):
 
     with active_actions_lock:
+
         active_actions.append(
             action
         )
@@ -544,10 +592,13 @@ def terminate_action_process(action):
     process = action.process
 
     if process is None:
+
         return
 
     try:
+
         process.terminate()
+
     except Exception:
         pass
 
@@ -581,6 +632,7 @@ def hold_at_position(
         while not action.stop_event.wait(
             0.5
         ):
+
             pass
 
         return
@@ -603,6 +655,7 @@ def hold_at_position(
                 if action.stop_event.wait(
                     0.1
                 ):
+
                     break
 
             if action.stop_event.is_set():
@@ -623,6 +676,7 @@ def hold_at_position(
             if action.stop_event.wait(
                 0.2
             ):
+
                 break
 
         finally:
@@ -679,6 +733,7 @@ def move_worker(action):
         while not action.stop_event.wait(
             0.5
         ):
+
             pass
 
         return
@@ -709,6 +764,7 @@ def move_worker(action):
         action.process = None
 
         if action.stop_event.is_set():
+
             return
 
         hold_at_position(
@@ -1003,6 +1059,7 @@ def handle_semantic(
         semantic,
         str,
     ):
+
         return
 
     semantic = (
@@ -1028,6 +1085,7 @@ def handle_semantic(
         return
 
     if semantic == "NONE":
+
         return
 
     if semantic == "RELEASE":
@@ -1269,6 +1327,13 @@ def cyberfly_receive_loop(
 
 # ============================================================
 # Cyber-Fly Client
+#
+# IMPORTANT:
+#
+# This thread has NOTHING to do with FFmpeg.
+#
+# Cyber-Fly can be offline indefinitely.
+# FFmpeg must continue running.
 # ============================================================
 
 def cyberfly_connection_loop():
@@ -1342,7 +1407,9 @@ def cyberfly_connection_loop():
                 "[CYBER-FLY] reconnecting..."
             )
 
-            time.sleep(1)
+            shutdown_event.wait(
+                CYBERFLY_RECONNECT_DELAY
+            )
 
 
 # ============================================================
@@ -1421,9 +1488,11 @@ def jpeg_dimensions(
 ):
 
     if len(data) < 10:
+
         return None
 
     if data[:2] != b"\xff\xd8":
+
         return None
 
     i = 2
@@ -1456,18 +1525,22 @@ def jpeg_dimensions(
             i < len(data)
             and data[i] == 0xFF
         ):
+
             i += 1
 
         if i >= len(data):
+
             break
 
         marker = data[i]
+
         i += 1
 
         if marker in (
             0xD8,
             0xD9,
         ):
+
             continue
 
         if (
@@ -1475,9 +1548,11 @@ def jpeg_dimensions(
             <= marker
             <= 0xD7
         ):
+
             continue
 
         if i + 2 > len(data):
+
             break
 
         segment_length = (
@@ -1486,6 +1561,7 @@ def jpeg_dimensions(
         )
 
         if segment_length < 2:
+
             return None
 
         if (
@@ -1554,65 +1630,74 @@ def send_rgb_frame(
         ).decode("ascii"),
     }
 
+    # IMPORTANT:
+    #
+    # False here means Cyber-Fly is offline.
+    #
+    # It does NOT mean:
+    #   - restart FFmpeg
+    #   - restart decoder
+    #   - restart scrcpy
+    #
     return send_to_cyberfly(
         message
     )
 
 
 # ============================================================
-# Scrcpy Stream
+# Scrcpy Pipeline
+#
+# One persistent pipeline generation.
+#
+# IMPORTANT:
+#
+# Cyber-Fly connection status is NEVER used as a
+# pipeline health signal.
 # ============================================================
 
-class ScrcpyStream:
+class ScrcpyPipeline:
 
-    def __init__(self):
+    def __init__(
+        self,
+        stream,
+    ):
 
-        self.socket = None
+        self.stream = stream
+
+        self.stop_event = (
+            threading.Event()
+        )
 
         self.ffmpeg_process = None
 
         self.decoder_process = None
 
         self.width = None
+
         self.height = None
 
-    def connect(self):
+        self.input_thread = None
 
-        sock = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM,
-        )
+        self.mjpeg_thread = None
 
-        sock.settimeout(5)
+        self.rgb_thread = None
 
-        sock.connect(
-            (
-                SCRCPY_HOST,
-                SCRCPY_PORT,
-            )
-        )
+        self.failure_reason = None
 
-        sock.settimeout(None)
 
-        self.socket = sock
-
-        print(
-            "[SCRCPY] connected to "
-            f"{SCRCPY_HOST}:"
-            f"{SCRCPY_PORT}"
-        )
+    # --------------------------------------------------------
+    # Start H264 -> MJPEG
+    # --------------------------------------------------------
 
     def start_ffmpeg(self):
 
         command = [
             FFMPEG,
 
-            "-loglevel",
-            "quiet",
+            "-hide_banner",
 
-            # ------------------------------------------------
-            # Raw H.264 input from scrcpy
-            # ------------------------------------------------
+            "-loglevel",
+            "error",
 
             "-analyzeduration",
             "1000000",
@@ -1640,27 +1725,32 @@ class ScrcpyStream:
             "pipe:1",
         ]
 
-        self.ffmpeg_process = (
-            subprocess.Popen(
-                command,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                bufsize=0,
-            )
+        self.ffmpeg_process = subprocess.Popen(
+            command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=0,
         )
 
         print(
             "[FFMPEG] H264 -> MJPEG started"
         )
 
+
+    # --------------------------------------------------------
+    # Start MJPEG -> RGB24
+    # --------------------------------------------------------
+
     def start_decoder(self):
 
         command = [
             FFMPEG,
 
+            "-hide_banner",
+
             "-loglevel",
-            "quiet",
+            "error",
 
             "-f",
             "mjpeg",
@@ -1679,39 +1769,188 @@ class ScrcpyStream:
             "pipe:1",
         ]
 
-        self.decoder_process = (
-            subprocess.Popen(
-                command,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                bufsize=0,
-            )
+        self.decoder_process = subprocess.Popen(
+            command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=0,
         )
 
         print(
             "[FFMPEG] MJPEG -> RGB24 started"
         )
 
-    def feed_ffmpeg(self):
+
+    # --------------------------------------------------------
+    # Read FFmpeg stderr
+    # --------------------------------------------------------
+
+    def read_process_error(
+        self,
+        process,
+        name,
+    ):
+
+        if process is None:
+            return
+
+        stderr = process.stderr
+
+        if stderr is None:
+            return
 
         try:
 
-            while not shutdown_event.is_set():
+            while (
+                not self.stop_event.is_set()
+                and not shutdown_event.is_set()
+            ):
 
-                data = self.socket.recv(
-                    65536
-                )
+                line = stderr.readline()
 
-                if not data:
+                if not line:
+
                     break
 
-                process = self.ffmpeg_process
+                text = line.decode(
+                    "utf-8",
+                    errors="replace",
+                ).strip()
 
-                if (
-                    process is None
-                    or process.poll() is not None
-                ):
+                if text:
+
+                    print(
+                        f"[{name}]",
+                        text,
+                    )
+
+        except Exception:
+
+            pass
+
+
+    # --------------------------------------------------------
+    # Feed H264
+    # --------------------------------------------------------
+
+    def feed_ffmpeg(self):
+
+        sock = self.stream.get_socket()
+
+        process = self.ffmpeg_process
+
+        if sock is None:
+
+            self.failure_reason = (
+                "scrcpy socket unavailable"
+            )
+
+            self.stop_event.set()
+
+            return
+
+        if process is None:
+
+            self.failure_reason = (
+                "FFmpeg process unavailable"
+            )
+
+            self.stop_event.set()
+
+            return
+
+        try:
+
+            sock.settimeout(
+                SOCKET_POLL_TIMEOUT
+            )
+
+        except Exception:
+
+            pass
+
+        try:
+
+            while (
+                not shutdown_event.is_set()
+                and not self.stop_event.is_set()
+            ):
+
+                try:
+
+                    data = sock.recv(
+                        65536
+                    )
+
+                except socket.timeout:
+
+                    continue
+
+                except (
+                    ConnectionResetError,
+                    BrokenPipeError,
+                ) as e:
+
+                    print(
+                        "[FFMPEG INPUT] "
+                        "scrcpy socket closed:",
+                        e,
+                    )
+
+                    self.failure_reason = (
+                        "scrcpy socket closed"
+                    )
+
+                    self.stream.socket_lost = True
+
+                    self.stop_event.set()
+
+                    break
+
+                except OSError as e:
+
+                    print(
+                        "[FFMPEG INPUT] "
+                        "scrcpy socket error:",
+                        e,
+                    )
+
+                    self.failure_reason = (
+                        "scrcpy socket error"
+                    )
+
+                    self.stream.socket_lost = True
+
+                    self.stop_event.set()
+
+                    break
+
+                if not data:
+
+                    print(
+                        "[FFMPEG INPUT] "
+                        "scrcpy EOF"
+                    )
+
+                    self.failure_reason = (
+                        "scrcpy EOF"
+                    )
+
+                    self.stream.socket_lost = True
+
+                    self.stop_event.set()
+
+                    break
+
+                if process.poll() is not None:
+
+                    self.failure_reason = (
+                        "FFmpeg exited"
+                    )
+
+                    self.stop_event.set()
+
                     break
 
                 try:
@@ -1720,10 +1959,21 @@ class ScrcpyStream:
                         data
                     )
 
+                    process.stdin.flush()
+
                 except (
                     BrokenPipeError,
                     OSError,
                 ):
+
+                    # FFmpeg died.
+                    #
+                    # This is NOT a scrcpy failure.
+                    self.failure_reason = (
+                        "FFmpeg stdin closed"
+                    )
+
+                    self.stop_event.set()
 
                     break
 
@@ -1736,43 +1986,86 @@ class ScrcpyStream:
                     e,
                 )
 
+            self.failure_reason = (
+                "FFmpeg input error"
+            )
+
+            self.stop_event.set()
+
         finally:
 
             try:
 
-                if (
-                    self.ffmpeg_process
-                    and self.ffmpeg_process.stdin
-                ):
+                if process.stdin is not None:
 
-                    self.ffmpeg_process.stdin.close()
+                    process.stdin.close()
 
             except Exception:
+
                 pass
+
+
+    # --------------------------------------------------------
+    # Feed MJPEG
+    # --------------------------------------------------------
 
     def feed_decoder(self):
 
         parser = JPEGParser()
 
+        process = self.ffmpeg_process
+
+        decoder = self.decoder_process
+
+        if process is None:
+
+            self.failure_reason = (
+                "FFmpeg unavailable"
+            )
+
+            self.stop_event.set()
+
+            return
+
+        if decoder is None:
+
+            self.failure_reason = (
+                "decoder unavailable"
+            )
+
+            self.stop_event.set()
+
+            return
+
         try:
 
-            while not shutdown_event.is_set():
+            while (
+                not shutdown_event.is_set()
+                and not self.stop_event.is_set()
+            ):
 
-                process = self.ffmpeg_process
+                if process.poll() is not None:
 
-                if (
-                    process is None
-                    or process.poll() is not None
-                ):
+                    self.failure_reason = (
+                        "FFmpeg exited"
+                    )
+
+                    self.stop_event.set()
+
                     break
 
-                data = (
-                    process.stdout.read(
-                        65536
-                    )
+                data = process.stdout.read(
+                    65536
                 )
 
                 if not data:
+
+                    self.failure_reason = (
+                        "FFmpeg output EOF"
+                    )
+
+                    self.stop_event.set()
+
                     break
 
                 frames = parser.feed(
@@ -1780,6 +2073,10 @@ class ScrcpyStream:
                 )
 
                 for frame in frames:
+
+                    if self.stop_event.is_set():
+
+                        break
 
                     if (
                         self.width is None
@@ -1793,6 +2090,7 @@ class ScrcpyStream:
                         )
 
                         if dimensions is None:
+
                             continue
 
                         self.width, self.height = (
@@ -1800,22 +2098,29 @@ class ScrcpyStream:
                         )
 
                         print(
-                            "[FRAME] "
-                            f"detected "
+                            "[FRAME] detected "
                             f"{self.width}x"
                             f"{self.height}"
                         )
 
                     try:
 
-                        self.decoder_process.stdin.write(
+                        decoder.stdin.write(
                             frame
                         )
+
+                        decoder.stdin.flush()
 
                     except (
                         BrokenPipeError,
                         OSError,
                     ):
+
+                        self.failure_reason = (
+                            "decoder stdin closed"
+                        )
+
+                        self.stop_event.set()
 
                         return
 
@@ -1828,43 +2133,74 @@ class ScrcpyStream:
                     e,
                 )
 
+            self.failure_reason = (
+                "decoder input error"
+            )
+
+            self.stop_event.set()
+
         finally:
 
             try:
 
-                if (
-                    self.decoder_process
-                    and self.decoder_process.stdin
-                ):
+                if decoder.stdin is not None:
 
-                    self.decoder_process.stdin.close()
+                    decoder.stdin.close()
 
             except Exception:
+
                 pass
 
+
+    # --------------------------------------------------------
+    # Read RGB24
+    # --------------------------------------------------------
+
     def read_decoder(self):
+
+        process = self.decoder_process
+
+        if process is None:
+
+            self.failure_reason = (
+                "decoder unavailable"
+            )
+
+            self.stop_event.set()
+
+            return
 
         raw_buffer = bytearray()
 
         try:
 
-            while not shutdown_event.is_set():
+            while (
+                not shutdown_event.is_set()
+                and not self.stop_event.is_set()
+            ):
 
-                process = self.decoder_process
+                if process.poll() is not None:
 
-                if (
-                    process is None
-                    or process.poll() is not None
-                ):
+                    self.failure_reason = (
+                        "decoder exited"
+                    )
+
+                    self.stop_event.set()
+
                     break
 
-                data = (
-                    process.stdout.read(
-                        65536
-                    )
+                data = process.stdout.read(
+                    65536
                 )
 
                 if not data:
+
+                    self.failure_reason = (
+                        "decoder output EOF"
+                    )
+
+                    self.stop_event.set()
+
                     break
 
                 raw_buffer.extend(
@@ -1875,6 +2211,7 @@ class ScrcpyStream:
                     self.width is None
                     or self.height is None
                 ):
+
                     continue
 
                 frame_size = (
@@ -1888,6 +2225,10 @@ class ScrcpyStream:
                     >= frame_size
                 ):
 
+                    if self.stop_event.is_set():
+
+                        break
+
                     frame = bytes(
                         raw_buffer[
                             :frame_size
@@ -1898,6 +2239,10 @@ class ScrcpyStream:
                         :frame_size
                     ]
 
+                    # Cyber-Fly offline is allowed.
+                    #
+                    # send_rgb_frame() returning False
+                    # does NOT stop this pipeline.
                     send_rgb_frame(
                         frame,
                         self.width,
@@ -1913,97 +2258,165 @@ class ScrcpyStream:
                     e,
                 )
 
+            self.failure_reason = (
+                "decoder output error"
+            )
+
+            self.stop_event.set()
+
+
+    # --------------------------------------------------------
+    # Process cleanup
+    # --------------------------------------------------------
+
+    def stop_process(
+        self,
+        process,
+    ):
+
+        if process is None:
+
+            return
+
+        try:
+
+            if process.stdin is not None:
+
+                try:
+
+                    process.stdin.close()
+
+                except Exception:
+
+                    pass
+
+        except Exception:
+
+            pass
+
+        try:
+
+            if process.poll() is None:
+
+                process.kill()
+
+        except Exception:
+
+            pass
+
+
+    # --------------------------------------------------------
+    # Cleanup
+    # --------------------------------------------------------
+
     def cleanup(self):
 
-        try:
+        self.stop_event.set()
 
-            if self.socket is not None:
+        ffmpeg_process = (
+            self.ffmpeg_process
+        )
 
-                self.socket.close()
+        decoder_process = (
+            self.decoder_process
+        )
 
-        except Exception:
-            pass
+        threads = (
+            self.input_thread,
+            self.mjpeg_thread,
+            self.rgb_thread,
+        )
 
-        try:
+        self.stop_process(
+            ffmpeg_process
+        )
 
-            if (
-                self.ffmpeg_process
-                is not None
-            ):
+        self.stop_process(
+            decoder_process
+        )
 
-                if (
-                    self.ffmpeg_process.stdin
-                    is not None
-                ):
+        for process in (
+            ffmpeg_process,
+            decoder_process,
+        ):
 
-                    try:
-                        self.ffmpeg_process.stdin.close()
-                    except Exception:
-                        pass
+            if process is None:
 
-                if (
-                    self.ffmpeg_process.poll()
-                    is None
-                ):
+                continue
 
-                    self.ffmpeg_process.kill()
+            try:
 
-                try:
-                    self.ffmpeg_process.wait(
-                        timeout=1
-                    )
-                except Exception:
-                    pass
+                process.wait(
+                    timeout=1
+                )
 
-        except Exception:
-            pass
-
-        try:
-
-            if (
-                self.decoder_process
-                is not None
-            ):
-
-                if (
-                    self.decoder_process.stdin
-                    is not None
-                ):
-
-                    try:
-                        self.decoder_process.stdin.close()
-                    except Exception:
-                        pass
-
-                if (
-                    self.decoder_process.poll()
-                    is None
-                ):
-
-                    self.decoder_process.kill()
+            except Exception:
 
                 try:
-                    self.decoder_process.wait(
-                        timeout=1
-                    )
+
+                    if process.poll() is None:
+
+                        process.kill()
+
                 except Exception:
+
                     pass
 
-        except Exception:
-            pass
+                try:
 
-        self.socket = None
+                    process.wait(
+                        timeout=1
+                    )
+
+                except Exception:
+
+                    pass
+
+        for thread in threads:
+
+            if thread is None:
+
+                continue
+
+            if thread is threading.current_thread():
+
+                continue
+
+            try:
+
+                thread.join(
+                    timeout=1
+                )
+
+            except Exception:
+
+                pass
 
         self.ffmpeg_process = None
 
         self.decoder_process = None
 
-        self.width = None
-        self.height = None
+        self.input_thread = None
 
-    def run_once(self):
+        self.mjpeg_thread = None
 
-        self.connect()
+        self.rgb_thread = None
+
+
+    # --------------------------------------------------------
+    # Run
+    #
+    # IMPORTANT:
+    #
+    # We DO NOT restart simply because a random worker
+    # thread disappears.
+    #
+    # We wait for an actual pipeline failure.
+    # --------------------------------------------------------
+
+    def run(self):
+
+        start_time = time.monotonic()
 
         try:
 
@@ -2011,32 +2424,282 @@ class ScrcpyStream:
 
             self.start_decoder()
 
-            input_thread = threading.Thread(
-                target=self.feed_ffmpeg,
-                daemon=True,
+        except Exception as e:
+
+            print(
+                "[FFMPEG] pipeline start error:",
+                e,
             )
 
-            mjpeg_thread = threading.Thread(
-                target=self.feed_decoder,
-                daemon=True,
+            self.failure_reason = (
+                "pipeline start error"
             )
 
-            rgb_thread = threading.Thread(
-                target=self.read_decoder,
-                daemon=True,
+            self.stop_event.set()
+
+            return
+
+        self.input_thread = threading.Thread(
+            target=self.feed_ffmpeg,
+            name="CyberFly-H264-Input",
+            daemon=True,
+        )
+
+        self.mjpeg_thread = threading.Thread(
+            target=self.feed_decoder,
+            name="CyberFly-MJPEG-Decoder",
+            daemon=True,
+        )
+
+        self.rgb_thread = threading.Thread(
+            target=self.read_decoder,
+            name="CyberFly-RGB-Output",
+            daemon=True,
+        )
+
+        self.input_thread.start()
+
+        self.mjpeg_thread.start()
+
+        self.rgb_thread.start()
+
+        while (
+            not shutdown_event.is_set()
+            and not self.stop_event.is_set()
+        ):
+
+            ffmpeg_process = (
+                self.ffmpeg_process
             )
 
-            input_thread.start()
-            mjpeg_thread.start()
-            rgb_thread.start()
+            decoder_process = (
+                self.decoder_process
+            )
 
-            input_thread.join()
-            mjpeg_thread.join()
-            rgb_thread.join()
+            # ------------------------------------------------
+            # Real process failure
+            # ------------------------------------------------
+
+            if (
+                ffmpeg_process is None
+                or ffmpeg_process.poll() is not None
+            ):
+
+                self.failure_reason = (
+                    "FFmpeg process exited"
+                )
+
+                self.stop_event.set()
+
+                break
+
+            if (
+                decoder_process is None
+                or decoder_process.poll() is not None
+            ):
+
+                self.failure_reason = (
+                    "decoder process exited"
+                )
+
+                self.stop_event.set()
+
+                break
+
+            # ------------------------------------------------
+            # Real scrcpy failure
+            # ------------------------------------------------
+
+            if self.stream.socket_lost:
+
+                self.failure_reason = (
+                    "scrcpy socket lost"
+                )
+
+                self.stop_event.set()
+
+                break
+
+            # ------------------------------------------------
+            # Worker health
+            #
+            # Do NOT immediately restart because one thread
+            # disappeared.
+            #
+            # Give the remaining pipeline a moment to settle.
+            # ------------------------------------------------
+
+            if (
+                not self.input_thread.is_alive()
+                or not self.mjpeg_thread.is_alive()
+                or not self.rgb_thread.is_alive()
+            ):
+
+                if (
+                    time.monotonic()
+                    - start_time
+                    < 2.0
+                ):
+
+                    time.sleep(
+                        0.1
+                    )
+
+                    continue
+
+                # At this point a worker actually died
+                # while the processes are still alive.
+                #
+                # Stop this generation cleanly.
+                self.failure_reason = (
+                    "pipeline worker stopped"
+                )
+
+                self.stop_event.set()
+
+                break
+
+            time.sleep(
+                0.05
+            )
+
+
+# ============================================================
+# Scrcpy Stream
+# ============================================================
+
+class ScrcpyStream:
+
+    def __init__(self):
+
+        self.socket = None
+
+        self.socket_lost = False
+
+        self.socket_lock = threading.Lock()
+
+
+    # --------------------------------------------------------
+    # Get socket safely
+    # --------------------------------------------------------
+
+    def get_socket(self):
+
+        with self.socket_lock:
+
+            return self.socket
+
+
+    # --------------------------------------------------------
+    # Connect
+    # --------------------------------------------------------
+
+    def connect(self):
+
+        sock = socket.socket(
+            socket.AF_INET,
+            socket.SOCK_STREAM,
+        )
+
+        sock.settimeout(5)
+
+        sock.connect(
+            (
+                SCRCPY_HOST,
+                SCRCPY_PORT,
+            )
+        )
+
+        sock.settimeout(
+            SOCKET_POLL_TIMEOUT
+        )
+
+        with self.socket_lock:
+
+            self.socket = sock
+
+            self.socket_lost = False
+
+        print(
+            "[SCRCPY] connected to "
+            f"{SCRCPY_HOST}:"
+            f"{SCRCPY_PORT}"
+        )
+
+
+    # --------------------------------------------------------
+    # Run one pipeline
+    # --------------------------------------------------------
+
+    def run_pipeline(self):
+
+        pipeline = ScrcpyPipeline(
+            self
+        )
+
+        try:
+
+            pipeline.run()
 
         finally:
 
-            self.cleanup()
+            reason = (
+                pipeline.failure_reason
+                or "pipeline stopped"
+            )
+
+            pipeline.cleanup()
+
+            if not shutdown_event.is_set():
+
+                print(
+                    "[PIPELINE] stopped:",
+                    reason,
+                )
+
+            return reason
+
+
+    # --------------------------------------------------------
+    # Cleanup socket
+    # --------------------------------------------------------
+
+    def cleanup(self):
+
+        with self.socket_lock:
+
+            sock = self.socket
+
+            self.socket = None
+
+            self.socket_lost = False
+
+        if sock is None:
+
+            return
+
+        try:
+
+            sock.shutdown(
+                socket.SHUT_RDWR
+            )
+
+        except Exception:
+
+            pass
+
+        try:
+
+            sock.close()
+
+        except Exception:
+
+            pass
+
+
+    # --------------------------------------------------------
+    # Persistent scrcpy loop
+    # --------------------------------------------------------
 
     def run(self):
 
@@ -2044,7 +2707,58 @@ class ScrcpyStream:
 
             try:
 
-                self.run_once()
+                # --------------------------------------------
+                # Connect relay
+                # --------------------------------------------
+
+                self.connect()
+
+                # --------------------------------------------
+                # Pipeline lifecycle
+                # --------------------------------------------
+
+                while (
+                    not shutdown_event.is_set()
+                    and self.get_socket() is not None
+                    and not self.socket_lost
+                ):
+
+                    reason = (
+                        self.run_pipeline()
+                    )
+
+                    if shutdown_event.is_set():
+
+                        break
+
+                    # ----------------------------------------
+                    # scrcpy itself died
+                    # ----------------------------------------
+
+                    if self.socket_lost:
+
+                        print(
+                            "[SCRCPY] "
+                            "socket lost"
+                        )
+
+                        break
+
+                    # ----------------------------------------
+                    # FFmpeg / decoder failure
+                    #
+                    # Keep scrcpy socket.
+                    # Rebuild only pipeline.
+                    # ----------------------------------------
+
+                    print(
+                        "[PIPELINE] "
+                        "restarting pipeline..."
+                    )
+
+                    shutdown_event.wait(
+                        PIPELINE_RESTART_DELAY
+                    )
 
             except Exception as e:
 
@@ -2055,6 +2769,8 @@ class ScrcpyStream:
                         e,
                     )
 
+            finally:
+
                 self.cleanup()
 
             if not shutdown_event.is_set():
@@ -2063,7 +2779,9 @@ class ScrcpyStream:
                     "[SCRCPY] reconnecting..."
                 )
 
-                time.sleep(1)
+                shutdown_event.wait(
+                    SCRCPY_RECONNECT_DELAY
+                )
 
 
 # ============================================================
@@ -2073,23 +2791,29 @@ class ScrcpyStream:
 def cli_loop():
 
     print()
+
     print(
         "========================================"
     )
+
     print(
         " Cyber-Fly Android Bridge"
     )
+
     print(
         " UID 2000 Shell"
     )
+
     print(
         "========================================"
     )
+
     print()
 
     print(
         "Cyber-Fly:"
     )
+
     print(
         f"  {CYBERFLY_HOST}:"
         f"{CYBERFLY_PORT}"
@@ -2100,42 +2824,55 @@ def cli_loop():
     print(
         "Commands:"
     )
+
     print(
         "  click"
     )
+
     print(
         "  double"
     )
+
     print(
         "  long"
     )
+
     print(
         "  swipe"
     )
+
     print(
         "  move forward"
     )
+
     print(
         "  move backward"
     )
+
     print(
         "  move left"
     )
+
     print(
         "  move right"
     )
+
     print(
         "  release"
     )
+
     print(
         "  semantic <SEMANTIC>"
     )
+
     print(
         "  status"
     )
+
     print(
         "  quit"
     )
+
     print()
 
     while not shutdown_event.is_set():
@@ -2157,6 +2894,7 @@ def cli_loop():
             break
 
         if not command:
+
             continue
 
         parts = command.split()
@@ -2302,6 +3040,7 @@ def cli_loop():
             )
 
             mapping = {
+
                 "forward":
                     "MOVE_FORWARD",
 
@@ -2346,15 +3085,19 @@ def cli_loop():
 def main():
 
     print()
+
     print(
         "========================================"
     )
+
     print(
         " Cyber-Fly Android Bridge"
     )
+
     print(
         "========================================"
     )
+
     print()
 
     print(
@@ -2386,7 +3129,9 @@ def main():
 
     print()
 
-    if not Path(FFMPEG).is_file():
+    if not Path(
+        FFMPEG
+    ).is_file():
 
         print(
             "[ERROR] FFmpeg not found:"
@@ -2428,23 +3173,41 @@ def main():
 
         return 1
 
+    # --------------------------------------------------------
+    # Cyber-Fly connection thread
+    # --------------------------------------------------------
+
     cyberfly_thread = threading.Thread(
         target=cyberfly_connection_loop,
+        name="CyberFly-Connection",
         daemon=True,
     )
 
     cyberfly_thread.start()
 
+    # --------------------------------------------------------
+    # scrcpy / FFmpeg thread
+    # --------------------------------------------------------
+
     scrcpy = ScrcpyStream()
 
     scrcpy_thread = threading.Thread(
         target=scrcpy.run,
+        name="Scrcpy-Pipeline",
         daemon=True,
     )
 
     scrcpy_thread.start()
 
+    # --------------------------------------------------------
+    # CLI
+    # --------------------------------------------------------
+
     cli_loop()
+
+    # --------------------------------------------------------
+    # Shutdown
+    # --------------------------------------------------------
 
     shutdown_event.set()
 
@@ -2455,6 +3218,7 @@ def main():
     scrcpy.cleanup()
 
     print()
+
     print(
         "[BRIDGE] stopped"
     )
@@ -2463,6 +3227,7 @@ def main():
 
 
 if __name__ == "__main__":
+
     raise SystemExit(
         main()
     )
