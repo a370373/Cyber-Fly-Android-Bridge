@@ -23,20 +23,6 @@
 #
 #   No Termux path is required.
 #
-# scrcpy-server.jar:
-#
-#   Project:
-#       Cyber-Fly-Bridge/scrcpy-server.jar
-#
-#        ↓
-#
-#   Runtime staging:
-#       /data/local/tmp/scrcpy-server.jar
-#
-#        ↓
-#
-#   app_process
-#
 # 1234 is created INSIDE the UID 2000 environment.
 # No adb forward is required here.
 # ============================================================
@@ -68,12 +54,6 @@ PORT="1234"
 
 # ------------------------------------------------------------
 # scrcpy tunnel identity
-#
-# With tunnel_forward=true, scrcpy uses:
-#
-#     localabstract:scrcpy_<SCID>
-#
-# The Python relay connects to the same abstract socket.
 # ------------------------------------------------------------
 
 SCID="12345678"
@@ -107,7 +87,7 @@ echo "[OK] UID 2000"
 # ------------------------------------------------------------
 
 if [ ! -f "$SERVER_SOURCE" ]; then
-    echo "[ERROR] scrcpy server not found in project:"
+    echo "[ERROR] scrcpy server not found:"
     echo "        $SERVER_SOURCE"
     exit 1
 fi
@@ -126,12 +106,6 @@ rm -f "$SERVER" 2>/dev/null
 
 if ! cp "$SERVER_SOURCE" "$SERVER"; then
     echo "[ERROR] Failed to copy scrcpy-server.jar."
-    echo
-    echo "Source:"
-    echo "    $SERVER_SOURCE"
-    echo
-    echo "Target:"
-    echo "    $SERVER"
     exit 1
 fi
 
@@ -165,15 +139,11 @@ echo "[OK] Python:"
 echo "     $PYTHON"
 
 # ------------------------------------------------------------
-# Python runtime environment
+# Python runtime
 # ------------------------------------------------------------
 
 export PYTHONHOME="$PYTHON_ROOT"
 export PYTHONPATH="$PYTHON_STDLIB"
-
-# ------------------------------------------------------------
-# Bundled native libraries
-# ------------------------------------------------------------
 
 OLD_LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
 
@@ -205,18 +175,14 @@ PYTHON_VERSION="$(
 if [ $? -ne 0 ]; then
     echo "[ERROR] Bundled Python could not be executed."
     echo
-    echo "Path:"
-    echo "    $PYTHON"
-    echo
-    echo "Output:"
-    echo "    $PYTHON_VERSION"
+    echo "$PYTHON_VERSION"
     exit 1
 fi
 
 echo "[OK] $PYTHON_VERSION"
 
 # ------------------------------------------------------------
-# Stop old relay if possible
+# Stop old relay
 # ------------------------------------------------------------
 
 echo
@@ -227,7 +193,7 @@ if command -v pkill >/dev/null 2>&1; then
 fi
 
 # ------------------------------------------------------------
-# Start UID 2000 local TCP relay
+# Start local TCP relay
 # ------------------------------------------------------------
 
 echo "[INFO] Starting local TCP relay..."
@@ -275,7 +241,7 @@ signal.signal(signal.SIGTERM, stop_handler)
 signal.signal(signal.SIGINT, stop_handler)
 
 
-def pipe(src, dst):
+def pipe(src, dst, name):
 
     try:
 
@@ -284,31 +250,51 @@ def pipe(src, dst):
             data = src.recv(65536)
 
             if not data:
+                print(
+                    "[RELAY] %s EOF"
+                    % name,
+                    flush=True
+                )
                 break
 
             dst.sendall(data)
 
-    except Exception:
-        pass
+    except BrokenPipeError:
 
-    finally:
+        print(
+            "[RELAY] %s BrokenPipe"
+            % name,
+            flush=True
+        )
 
-        try:
-            src.shutdown(socket.SHUT_RD)
-        except Exception:
-            pass
+    except ConnectionResetError:
 
-        try:
-            dst.shutdown(socket.SHUT_WR)
-        except Exception:
-            pass
+        print(
+            "[RELAY] %s ConnectionReset"
+            % name,
+            flush=True
+        )
+
+    except Exception as e:
+
+        print(
+            "[RELAY] %s error: %s"
+            % (name, e),
+            flush=True
+        )
 
 
-def handle_client(client):
+def handle_client(client, address):
 
     abstract_socket = None
 
     try:
+
+        print(
+            "[RELAY] Connecting to localabstract:%s"
+            % SOCKET_NAME,
+            flush=True
+        )
 
         abstract_socket = socket.socket(
             socket.AF_UNIX,
@@ -319,15 +305,29 @@ def handle_client(client):
             "\0" + SOCKET_NAME
         )
 
+        print(
+            "[RELAY] Abstract socket connected: @%s"
+            % SOCKET_NAME,
+            flush=True
+        )
+
         t1 = threading.Thread(
             target=pipe,
-            args=(client, abstract_socket),
+            args=(
+                client,
+                abstract_socket,
+                "TCP -> ABSTRACT"
+            ),
             daemon=True
         )
 
         t2 = threading.Thread(
             target=pipe,
-            args=(abstract_socket, client),
+            args=(
+                abstract_socket,
+                client,
+                "ABSTRACT -> TCP"
+            ),
             daemon=True
         )
 
@@ -337,8 +337,18 @@ def handle_client(client):
         t1.join()
         t2.join()
 
-    except Exception:
-        pass
+        print(
+            "[RELAY] Both directions stopped.",
+            flush=True
+        )
+
+    except Exception as e:
+
+        print(
+            "[RELAY] Client handler error: %s"
+            % e,
+            flush=True
+        )
 
     finally:
 
@@ -352,6 +362,12 @@ def handle_client(client):
             client.close()
         except Exception:
             pass
+
+        print(
+            "[RELAY] Client connection closed: %s:%s"
+            % (address[0], address[1]),
+            flush=True
+        )
 
 
 try:
@@ -402,10 +418,16 @@ try:
 
             continue
 
-        except Exception:
+        except Exception as e:
 
             if not running:
                 break
+
+            print(
+                "[RELAY] Accept error: %s"
+                % e,
+                flush=True
+            )
 
             time.sleep(0.1)
             continue
@@ -418,7 +440,7 @@ try:
 
         thread = threading.Thread(
             target=handle_client,
-            args=(client,),
+            args=(client, address),
             daemon=True
         )
 
@@ -428,7 +450,7 @@ try:
 except Exception as e:
 
     print(
-        "[RELAY] ERROR: %s"
+        "[RELAY] FATAL ERROR: %s"
         % e,
         flush=True
     )
@@ -489,14 +511,15 @@ echo
 # ------------------------------------------------------------
 # IMPORTANT:
 #
-# Python requires the bundled LD_LIBRARY_PATH above.
+# Python / FFmpeg use bundled libraries.
 #
-# Android app_process must NOT inherit that Python/FFmpeg
-# library path because it interferes with Android's own
-# linker namespace and system libraries.
+# app_process MUST NOT inherit the bundled LD_LIBRARY_PATH.
 #
-# Therefore LD_LIBRARY_PATH is explicitly removed only
-# for app_process.
+# Android app_process therefore runs with:
+#
+#     env -u LD_LIBRARY_PATH
+#
+# This preserves Android's own linker environment.
 # ------------------------------------------------------------
 
 env -u LD_LIBRARY_PATH \
@@ -535,7 +558,7 @@ wait "$PYTHON_RELAY_PID" 2>/dev/null
 echo "[INFO] TCP relay stopped."
 
 # ------------------------------------------------------------
-# Remove staged scrcpy server
+# Remove staged server
 # ------------------------------------------------------------
 
 if [ -f "$SERVER" ]; then
