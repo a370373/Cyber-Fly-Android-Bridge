@@ -18,8 +18,24 @@
 #        ↓
 #   Cyber-Fly Android Bridge
 #
-# Python:
-#   Provided by Termux
+# Runtime:
+#   Python is provided by the Cyber-Fly-Bridge/Python directory.
+#
+#   No Termux path is required.
+#
+# scrcpy-server.jar:
+#
+#   Project:
+#       Cyber-Fly-Bridge/scrcpy-server.jar
+#
+#        ↓
+#
+#   Runtime staging:
+#       /data/local/tmp/scrcpy-server.jar
+#
+#        ↓
+#
+#   app_process
 #
 # 1234 is created INSIDE the UID 2000 environment.
 # No adb forward is required here.
@@ -29,23 +45,36 @@ clear
 
 VERSION="4.1"
 
+# ------------------------------------------------------------
+# Project-relative paths
+# ------------------------------------------------------------
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+
+SERVER_SOURCE="$SCRIPT_DIR/scrcpy-server.jar"
 SERVER="/data/local/tmp/scrcpy-server.jar"
+
+PYTHON_ROOT="$SCRIPT_DIR/Python"
+
+PYTHON="$PYTHON_ROOT/bin/python"
+
+PYTHON_LIB="$PYTHON_ROOT/lib"
+PYTHON_STDLIB="$PYTHON_ROOT/lib/python3.14"
+
+FFMPEG_ROOT="$SCRIPT_DIR/FFmpeg FFprobe"
+
+FFMPEG_LIB="$FFMPEG_ROOT/lib"
 
 HOST="127.0.0.1"
 PORT="1234"
 SOCKET="scrcpy"
 
-# Termux-provided Python.
-#
-# IMPORTANT:
-# The Python process is launched BY UID 2000.
-# Termux only provides the Python executable/runtime.
-#
-PYTHON="/data/data/com.termux/files/usr/bin/python"
-
 echo "======================================"
 echo " Cyber-Fly scrcpy Server"
 echo "======================================"
+echo
+echo "[INFO] Project directory:"
+echo "       $SCRIPT_DIR"
 echo
 echo "[INFO] Checking UID..."
 
@@ -64,16 +93,42 @@ fi
 echo "[OK] UID 2000"
 
 # ------------------------------------------------------------
-# Server check
+# Server source check
 # ------------------------------------------------------------
 
-if [ ! -f "$SERVER" ]; then
-    echo "[ERROR] scrcpy server not found:"
-    echo "        $SERVER"
+if [ ! -f "$SERVER_SOURCE" ]; then
+    echo "[ERROR] scrcpy server not found in project:"
+    echo "        $SERVER_SOURCE"
     exit 1
 fi
 
-echo "[OK] scrcpy server found"
+echo "[OK] scrcpy server source found"
+echo "     $SERVER_SOURCE"
+
+# ------------------------------------------------------------
+# Stage scrcpy server
+#
+# The project keeps the canonical copy.
+# app_process uses the runtime copy in /data/local/tmp.
+# ------------------------------------------------------------
+
+echo
+echo "[INFO] Installing scrcpy server to runtime path..."
+
+rm -f "$SERVER" 2>/dev/null
+
+if ! cp "$SERVER_SOURCE" "$SERVER"; then
+    echo "[ERROR] Failed to copy scrcpy-server.jar."
+    echo
+    echo "Source:"
+    echo "    $SERVER_SOURCE"
+    echo
+    echo "Target:"
+    echo "    $SERVER"
+    exit 1
+fi
+
+echo "[OK] scrcpy server staged:"
 echo "     $SERVER"
 
 # ------------------------------------------------------------
@@ -91,10 +146,10 @@ echo "[OK] app_process"
 # Python check
 # ------------------------------------------------------------
 
-echo "[INFO] Checking Termux Python..."
+echo "[INFO] Checking bundled Python..."
 
 if [ ! -x "$PYTHON" ]; then
-    echo "[ERROR] Termux Python not found or not executable:"
+    echo "[ERROR] Bundled Python not found or not executable:"
     echo "        $PYTHON"
     exit 1
 fi
@@ -103,15 +158,52 @@ echo "[OK] Python:"
 echo "     $PYTHON"
 
 # ------------------------------------------------------------
+# Python runtime environment
+#
+# Python was copied out of Termux.
+# Force it to use the bundled runtime instead of the
+# original Termux prefix.
+# ------------------------------------------------------------
+
+export PYTHONHOME="$PYTHON_ROOT"
+export PYTHONPATH="$PYTHON_STDLIB"
+
+# ------------------------------------------------------------
+# Bundled native libraries
+#
+# Both Python and FFmpeg may need libraries copied into the
+# project runtime.
+# ------------------------------------------------------------
+
+OLD_LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
+
+LD_LIBRARY_PATH_VALUE="$FFMPEG_LIB:$PYTHON_LIB:$PYTHON_STDLIB"
+
+if [ -n "$OLD_LD_LIBRARY_PATH" ]; then
+    LD_LIBRARY_PATH_VALUE="$LD_LIBRARY_PATH_VALUE:$OLD_LD_LIBRARY_PATH"
+fi
+
+export LD_LIBRARY_PATH="$LD_LIBRARY_PATH_VALUE"
+
+echo
+echo "[INFO] Bundled runtime:"
+echo "       PYTHONHOME=$PYTHONHOME"
+echo "       PYTHONPATH=$PYTHONPATH"
+echo "       FFmpeg lib=$FFMPEG_LIB"
+
+# ------------------------------------------------------------
 # Python runtime check
 # ------------------------------------------------------------
 
+echo
 echo "[INFO] Testing Python runtime..."
 
-PYTHON_VERSION="$("$PYTHON" --version 2>&1)"
+PYTHON_VERSION="$(
+    "$PYTHON" --version 2>&1
+)"
 
 if [ $? -ne 0 ]; then
-    echo "[ERROR] Termux Python could not be executed."
+    echo "[ERROR] Bundled Python could not be executed."
     echo
     echo "Path:"
     echo "    $PYTHON"
@@ -129,14 +221,6 @@ echo "[OK] $PYTHON_VERSION"
 
 echo
 echo "[INFO] Checking TCP port $PORT..."
-
-# Best-effort cleanup.
-#
-# The relay is created from this launcher, and the process is
-# normally cleaned up when scrcpy exits.
-#
-# Keep this optional in case pkill is unavailable.
-#
 
 if command -v pkill >/dev/null 2>&1; then
     pkill -f "CYBER_FLY_SCRCPY_RELAY_1234" 2>/dev/null
@@ -184,10 +268,6 @@ running = True
 server_socket = None
 
 
-# ------------------------------------------------------------
-# Signal handler
-# ------------------------------------------------------------
-
 def stop_handler(signum, frame):
     global running
 
@@ -203,10 +283,6 @@ def stop_handler(signum, frame):
 signal.signal(signal.SIGTERM, stop_handler)
 signal.signal(signal.SIGINT, stop_handler)
 
-
-# ------------------------------------------------------------
-# Bidirectional pipe
-# ------------------------------------------------------------
 
 def pipe(src, dst):
 
@@ -237,27 +313,11 @@ def pipe(src, dst):
             pass
 
 
-# ------------------------------------------------------------
-# Handle TCP client
-# ------------------------------------------------------------
-
 def handle_client(client):
 
     abstract_socket = None
 
     try:
-
-        # ----------------------------------------------------
-        # Android localabstract socket
-        #
-        # Linux abstract UNIX socket:
-        #
-        #     \0scrcpy
-        #
-        # Android:
-        #
-        #     localabstract:scrcpy
-        # ----------------------------------------------------
 
         abstract_socket = socket.socket(
             socket.AF_UNIX,
@@ -268,19 +328,11 @@ def handle_client(client):
             "\0" + SOCKET_NAME
         )
 
-        # ----------------------------------------------------
-        # TCP -> Android localabstract
-        # ----------------------------------------------------
-
         t1 = threading.Thread(
             target=pipe,
             args=(client, abstract_socket),
             daemon=True
         )
-
-        # ----------------------------------------------------
-        # Android localabstract -> TCP
-        # ----------------------------------------------------
 
         t2 = threading.Thread(
             target=pipe,
@@ -310,10 +362,6 @@ def handle_client(client):
         except Exception:
             pass
 
-
-# ------------------------------------------------------------
-# TCP listener
-# ------------------------------------------------------------
 
 try:
 
@@ -350,10 +398,6 @@ try:
         % SOCKET_NAME,
         flush=True
     )
-
-    # --------------------------------------------------------
-    # Accept clients
-    # --------------------------------------------------------
 
     while running:
 
@@ -480,6 +524,18 @@ fi
 wait "$PYTHON_RELAY_PID" 2>/dev/null
 
 echo "[INFO] TCP relay stopped."
+
+# ------------------------------------------------------------
+# Remove staged scrcpy server
+# ------------------------------------------------------------
+
+if [ -f "$SERVER" ]; then
+
+    echo "[INFO] Removing staged scrcpy server..."
+
+    rm -f "$SERVER" 2>/dev/null
+
+fi
 
 echo
 echo "======================================"

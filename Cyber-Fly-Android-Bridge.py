@@ -101,15 +101,85 @@ Unsupported Cyber-Fly actions：
 Bridge 不猜測未知 action 的意思。
 """
 
-
 import base64
 import json
+import os
 import random
 import socket
 import struct
 import subprocess
 import threading
 import time
+
+from pathlib import Path
+
+
+# ============================================================
+# Runtime Paths
+# ============================================================
+
+BASE_DIR = Path(__file__).resolve().parent
+
+FFMPEG_DIR = (
+    BASE_DIR
+    / "FFmpeg FFprobe"
+)
+
+FFMPEG = str(
+    FFMPEG_DIR
+    / "bin"
+    / "ffmpeg"
+)
+
+FFMPEG_LIB_DIR = str(
+    FFMPEG_DIR
+    / "lib"
+)
+
+PYTHON_DIR = (
+    BASE_DIR
+    / "Python"
+)
+
+PYTHON_LIB_DIR = str(
+    PYTHON_DIR
+    / "lib"
+)
+
+PYTHON_STDLIB_DIR = str(
+    PYTHON_DIR
+    / "lib"
+    / "python3.14"
+)
+
+
+# ------------------------------------------------------------
+# Bundled runtime environment
+#
+# Python itself is already running at this point, so these
+# variables are mainly inherited by child processes such as
+# FFmpeg and Python native extensions loaded later.
+# ------------------------------------------------------------
+
+_existing_ld_library_path = os.environ.get(
+    "LD_LIBRARY_PATH",
+    "",
+)
+
+_runtime_library_paths = [
+    FFMPEG_LIB_DIR,
+    PYTHON_LIB_DIR,
+    PYTHON_STDLIB_DIR,
+]
+
+if _existing_ld_library_path:
+    _runtime_library_paths.append(
+        _existing_ld_library_path
+    )
+
+os.environ["LD_LIBRARY_PATH"] = ":".join(
+    _runtime_library_paths
+)
 
 
 from coordinates import (
@@ -148,8 +218,6 @@ TEST_MODE = True
 # ------------------------------------------------------------
 # FFmpeg
 # ------------------------------------------------------------
-
-FFMPEG = "ffmpeg"
 
 JPEG_QUALITY = 5
 
@@ -1062,27 +1130,14 @@ def handle_semantic(
 
         return
 
-    # --------------------------------------------------------
-    # NONE
-    # --------------------------------------------------------
-
     if semantic == "NONE":
-
         return
-
-    # --------------------------------------------------------
-    # RELEASE
-    # --------------------------------------------------------
 
     if semantic == "RELEASE":
 
         release_actions()
 
         return
-
-    # --------------------------------------------------------
-    # MOVE
-    # --------------------------------------------------------
 
     if semantic.startswith(
         "MOVE_"
@@ -1110,10 +1165,6 @@ def handle_semantic(
 
         return
 
-    # --------------------------------------------------------
-    # SWIPE
-    # --------------------------------------------------------
-
     if semantic == "SWIPE":
 
         coordinates = choose_coordinates(
@@ -1136,10 +1187,6 @@ def handle_semantic(
             )
 
         return
-
-    # --------------------------------------------------------
-    # LONG PRESS
-    # --------------------------------------------------------
 
     if semantic == "LONG_PRESS":
 
@@ -1165,10 +1212,6 @@ def handle_semantic(
 
         return
 
-    # --------------------------------------------------------
-    # CLICK
-    # --------------------------------------------------------
-
     if semantic == "CLICK":
 
         coordinates = choose_coordinates(
@@ -1191,10 +1234,6 @@ def handle_semantic(
             )
 
         return
-
-    # --------------------------------------------------------
-    # DOUBLE CLICK
-    # --------------------------------------------------------
 
     if semantic == "DOUBLE_CLICK":
 
@@ -1281,8 +1320,6 @@ def handle_action_message(
         parameters,
     )
 
-    # Cyber-Fly ActionType 使用 lowercase value。
-    # Bridge 內部 semantic 使用 uppercase。
     semantic = action.strip().upper()
 
     handle_semantic(
@@ -1670,10 +1707,6 @@ class ScrcpyStream:
         self.width = None
         self.height = None
 
-    # --------------------------------------------------------
-    # scrcpy relay
-    # --------------------------------------------------------
-
     def connect(self):
 
         sock = socket.socket(
@@ -1699,10 +1732,6 @@ class ScrcpyStream:
             f"{SCRCPY_HOST}:"
             f"{SCRCPY_PORT}"
         )
-
-    # --------------------------------------------------------
-    # H264 → MJPEG
-    # --------------------------------------------------------
 
     def start_ffmpeg(self):
 
@@ -1740,10 +1769,6 @@ class ScrcpyStream:
             "[FFMPEG] H264 -> MJPEG started"
         )
 
-    # --------------------------------------------------------
-    # MJPEG → RGB24
-    # --------------------------------------------------------
-
     def start_decoder(self):
 
         command = [
@@ -1780,10 +1805,6 @@ class ScrcpyStream:
             "[FFMPEG] MJPEG -> RGB24 started"
         )
 
-    # --------------------------------------------------------
-    # H264 input
-    # --------------------------------------------------------
-
     def feed_ffmpeg(self):
 
         try:
@@ -1818,10 +1839,6 @@ class ScrcpyStream:
                 self.ffmpeg_process.stdin.close()
             except Exception:
                 pass
-
-    # --------------------------------------------------------
-    # MJPEG bridge
-    # --------------------------------------------------------
 
     def feed_decoder(self):
 
@@ -1900,10 +1917,6 @@ class ScrcpyStream:
             except Exception:
                 pass
 
-    # --------------------------------------------------------
-    # RGB output
-    # --------------------------------------------------------
-
     def read_decoder(self):
 
         if (
@@ -1977,10 +1990,6 @@ class ScrcpyStream:
                     e,
                 )
 
-    # --------------------------------------------------------
-    # Cleanup
-    # --------------------------------------------------------
-
     def cleanup(self):
 
         try:
@@ -2028,10 +2037,6 @@ class ScrcpyStream:
         self.width = None
         self.height = None
 
-    # --------------------------------------------------------
-    # One complete stream
-    # --------------------------------------------------------
-
     def run_once(self):
 
         self.connect()
@@ -2064,10 +2069,6 @@ class ScrcpyStream:
         rgb_thread.join()
 
         self.cleanup()
-
-    # --------------------------------------------------------
-    # Reconnect
-    # --------------------------------------------------------
 
     def run(self):
 
@@ -2192,10 +2193,6 @@ def cli_loop():
 
         parts = command.split()
 
-        # ----------------------------------------------------
-        # Quit
-        # ----------------------------------------------------
-
         if (
             parts[0].lower()
             == "quit"
@@ -2208,10 +2205,6 @@ def cli_loop():
             close_cyberfly_socket()
 
             break
-
-        # ----------------------------------------------------
-        # Status
-        # ----------------------------------------------------
 
         if (
             parts[0].lower()
@@ -2246,10 +2239,6 @@ def cli_loop():
 
             continue
 
-        # ----------------------------------------------------
-        # Release
-        # ----------------------------------------------------
-
         if (
             parts[0].lower()
             == "release"
@@ -2260,10 +2249,6 @@ def cli_loop():
             )
 
             continue
-
-        # ----------------------------------------------------
-        # Semantic
-        # ----------------------------------------------------
 
         if (
             parts[0].lower()
@@ -2285,10 +2270,6 @@ def cli_loop():
 
             continue
 
-        # ----------------------------------------------------
-        # Click
-        # ----------------------------------------------------
-
         if (
             parts[0].lower()
             == "click"
@@ -2299,10 +2280,6 @@ def cli_loop():
             )
 
             continue
-
-        # ----------------------------------------------------
-        # Double
-        # ----------------------------------------------------
 
         if (
             parts[0].lower()
@@ -2315,10 +2292,6 @@ def cli_loop():
 
             continue
 
-        # ----------------------------------------------------
-        # Long
-        # ----------------------------------------------------
-
         if (
             parts[0].lower()
             == "long"
@@ -2330,10 +2303,6 @@ def cli_loop():
 
             continue
 
-        # ----------------------------------------------------
-        # Swipe
-        # ----------------------------------------------------
-
         if (
             parts[0].lower()
             == "swipe"
@@ -2344,10 +2313,6 @@ def cli_loop():
             )
 
             continue
-
-        # ----------------------------------------------------
-        # Move
-        # ----------------------------------------------------
 
         if (
             parts[0].lower()
@@ -2437,15 +2402,63 @@ def main():
     )
 
     print(
+        f"FFmpeg           : "
+        f"{FFMPEG}"
+    )
+
+    print(
+        f"FFmpeg lib       : "
+        f"{FFMPEG_LIB_DIR}"
+    )
+
+    print(
         f"TEST_MODE        : "
         f"{TEST_MODE}"
     )
 
     print()
 
-    # --------------------------------------------------------
-    # Cyber-Fly connection
-    # --------------------------------------------------------
+    if not Path(FFMPEG).is_file():
+
+        print(
+            "[ERROR] FFmpeg not found:"
+        )
+
+        print(
+            f"        {FFMPEG}"
+        )
+
+        return 1
+
+    if not os.access(
+        FFMPEG,
+        os.X_OK,
+    ):
+
+        print(
+            "[ERROR] FFmpeg is not executable:"
+        )
+
+        print(
+            f"        {FFMPEG}"
+        )
+
+        return 1
+
+    if not Path(
+        FFMPEG_LIB_DIR
+    ).is_dir():
+
+        print(
+            "[ERROR] FFmpeg library directory "
+            "not found:"
+        )
+
+        print(
+            f"        {FFMPEG_LIB_DIR}"
+        )
+
+        return 1
 
     cyberfly_thread = threading.Thread(
         target=cyberfly_connection_loop,
@@ -2453,10 +2466,6 @@ def main():
     )
 
     cyberfly_thread.start()
-
-    # --------------------------------------------------------
-    # scrcpy
-    # --------------------------------------------------------
 
     scrcpy = ScrcpyStream()
 
@@ -2467,15 +2476,7 @@ def main():
 
     scrcpy_thread.start()
 
-    # --------------------------------------------------------
-    # Human CLI
-    # --------------------------------------------------------
-
     cli_loop()
-
-    # --------------------------------------------------------
-    # Shutdown
-    # --------------------------------------------------------
 
     shutdown_event.set()
 
@@ -2490,6 +2491,10 @@ def main():
         "[BRIDGE] stopped"
     )
 
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(
+        main()
+    )
