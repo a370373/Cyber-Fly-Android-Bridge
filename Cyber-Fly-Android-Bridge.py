@@ -1611,26 +1611,14 @@ class ScrcpyStream:
             "quiet",
 
             # ------------------------------------------------
-            # Live raw H.264 input.
-            #
-            # scrcpy raw_stream=true provides an elementary
-            # H.264 stream without scrcpy packet metadata.
-            #
-            # Give FFmpeg enough input to discover SPS/PPS
-            # and stream parameters before decoding.
+            # Raw H.264 input from scrcpy
             # ------------------------------------------------
 
             "-analyzeduration",
-            "10000000",
+            "1000000",
 
             "-probesize",
             "10000000",
-
-            "-fflags",
-            "nobuffer",
-
-            "-flags",
-            "low_delay",
 
             "-f",
             "h264",
@@ -1640,11 +1628,14 @@ class ScrcpyStream:
 
             "-an",
 
-            "-f",
+            "-c:v",
             "mjpeg",
 
             "-q:v",
             str(JPEG_QUALITY),
+
+            "-f",
+            "mjpeg",
 
             "pipe:1",
         ]
@@ -1670,9 +1661,6 @@ class ScrcpyStream:
 
             "-loglevel",
             "quiet",
-
-            "-fflags",
-            "nobuffer",
 
             "-f",
             "mjpeg",
@@ -1718,13 +1706,24 @@ class ScrcpyStream:
                 if not data:
                     break
 
+                process = self.ffmpeg_process
+
+                if (
+                    process is None
+                    or process.poll() is not None
+                ):
+                    break
+
                 try:
 
-                    self.ffmpeg_process.stdin.write(
+                    process.stdin.write(
                         data
                     )
 
-                except BrokenPipeError:
+                except (
+                    BrokenPipeError,
+                    OSError,
+                ):
 
                     break
 
@@ -1740,7 +1739,14 @@ class ScrcpyStream:
         finally:
 
             try:
-                self.ffmpeg_process.stdin.close()
+
+                if (
+                    self.ffmpeg_process
+                    and self.ffmpeg_process.stdin
+                ):
+
+                    self.ffmpeg_process.stdin.close()
+
             except Exception:
                 pass
 
@@ -1752,8 +1758,16 @@ class ScrcpyStream:
 
             while not shutdown_event.is_set():
 
+                process = self.ffmpeg_process
+
+                if (
+                    process is None
+                    or process.poll() is not None
+                ):
+                    break
+
                 data = (
-                    self.ffmpeg_process.stdout.read(
+                    process.stdout.read(
                         65536
                     )
                 )
@@ -1779,7 +1793,6 @@ class ScrcpyStream:
                         )
 
                         if dimensions is None:
-
                             continue
 
                         self.width, self.height = (
@@ -1799,7 +1812,10 @@ class ScrcpyStream:
                             frame
                         )
 
-                    except BrokenPipeError:
+                    except (
+                        BrokenPipeError,
+                        OSError,
+                    ):
 
                         return
 
@@ -1815,7 +1831,14 @@ class ScrcpyStream:
         finally:
 
             try:
-                self.decoder_process.stdin.close()
+
+                if (
+                    self.decoder_process
+                    and self.decoder_process.stdin
+                ):
+
+                    self.decoder_process.stdin.close()
+
             except Exception:
                 pass
 
@@ -1827,8 +1850,16 @@ class ScrcpyStream:
 
             while not shutdown_event.is_set():
 
+                process = self.decoder_process
+
+                if (
+                    process is None
+                    or process.poll() is not None
+                ):
+                    break
+
                 data = (
-                    self.decoder_process.stdout.read(
+                    process.stdout.read(
                         65536
                     )
                 )
@@ -1910,7 +1941,12 @@ class ScrcpyStream:
                     except Exception:
                         pass
 
-                self.ffmpeg_process.kill()
+                if (
+                    self.ffmpeg_process.poll()
+                    is None
+                ):
+
+                    self.ffmpeg_process.kill()
 
                 try:
                     self.ffmpeg_process.wait(
@@ -1939,7 +1975,12 @@ class ScrcpyStream:
                     except Exception:
                         pass
 
-                self.decoder_process.kill()
+                if (
+                    self.decoder_process.poll()
+                    is None
+                ):
+
+                    self.decoder_process.kill()
 
                 try:
                     self.decoder_process.wait(
@@ -1964,34 +2005,38 @@ class ScrcpyStream:
 
         self.connect()
 
-        self.start_ffmpeg()
+        try:
 
-        self.start_decoder()
+            self.start_ffmpeg()
 
-        input_thread = threading.Thread(
-            target=self.feed_ffmpeg,
-            daemon=True,
-        )
+            self.start_decoder()
 
-        mjpeg_thread = threading.Thread(
-            target=self.feed_decoder,
-            daemon=True,
-        )
+            input_thread = threading.Thread(
+                target=self.feed_ffmpeg,
+                daemon=True,
+            )
 
-        rgb_thread = threading.Thread(
-            target=self.read_decoder,
-            daemon=True,
-        )
+            mjpeg_thread = threading.Thread(
+                target=self.feed_decoder,
+                daemon=True,
+            )
 
-        input_thread.start()
-        mjpeg_thread.start()
-        rgb_thread.start()
+            rgb_thread = threading.Thread(
+                target=self.read_decoder,
+                daemon=True,
+            )
 
-        input_thread.join()
-        mjpeg_thread.join()
-        rgb_thread.join()
+            input_thread.start()
+            mjpeg_thread.start()
+            rgb_thread.start()
 
-        self.cleanup()
+            input_thread.join()
+            mjpeg_thread.join()
+            rgb_thread.join()
+
+        finally:
+
+            self.cleanup()
 
     def run(self):
 
