@@ -16,6 +16,7 @@ coordinates.py
 Bridge 本體不需要修改。
 
 操作規則：
+
     CLICK
         全螢幕可操作
 
@@ -29,17 +30,23 @@ Bridge 本體不需要修改。
         全螢幕任意位置
         支援上、下、左、右
 
+    TURN_LEFT
+        使用全螢幕向左 SWIPE
+
+    TURN_RIGHT
+        使用全螢幕向右 SWIPE
+
+    TURN_FORWARD
+        使用全螢幕向上 SWIPE
+
+    TURN_BACKWARD
+        使用全螢幕向下 SWIPE
+
     RELEASE
         由 Bridge 管理目前的持續操作
 
     NONE
         不操作
-
-已取消：
-    MOVE_FORWARD
-    MOVE_BACKWARD
-    MOVE_LEFT
-    MOVE_RIGHT
 """
 
 
@@ -60,14 +67,6 @@ GRID_ROWS = 30
 
 
 def _build_fullscreen_points():
-    """
-    建立整個螢幕的可操作座標。
-
-    所有座標保證：
-
-        0 <= X < SCREEN_WIDTH
-        0 <= Y < SCREEN_HEIGHT
-    """
 
     points = []
 
@@ -97,12 +96,16 @@ def _build_fullscreen_points():
                 min(SCREEN_HEIGHT - 1, y)
             )
 
-            points.append((x, y))
+            points.append(
+                (x, y)
+            )
 
     return points
 
 
-ACTION_COORDINATES = _build_fullscreen_points()
+ACTION_COORDINATES = (
+    _build_fullscreen_points()
+)
 
 
 # ============================================================
@@ -110,20 +113,6 @@ ACTION_COORDINATES = _build_fullscreen_points()
 # ============================================================
 
 def _build_swipe_coordinates():
-    """
-    建立全螢幕 SWIPE 座標。
-
-    支援：
-
-        上
-        下
-        左
-        右
-
-    每個項目：
-
-        (X1, Y1, X2, Y2)
-    """
 
     movements = []
 
@@ -141,7 +130,11 @@ def _build_swipe_coordinates():
         # 向右
         # ----------------------------
 
-        if x + horizontal_distance < SCREEN_WIDTH:
+        if (
+            x + horizontal_distance
+            < SCREEN_WIDTH
+        ):
+
             movements.append(
                 (
                     x,
@@ -155,7 +148,11 @@ def _build_swipe_coordinates():
         # 向左
         # ----------------------------
 
-        if x - horizontal_distance >= 0:
+        if (
+            x - horizontal_distance
+            >= 0
+        ):
+
             movements.append(
                 (
                     x,
@@ -169,7 +166,11 @@ def _build_swipe_coordinates():
         # 向下
         # ----------------------------
 
-        if y + vertical_distance < SCREEN_HEIGHT:
+        if (
+            y + vertical_distance
+            < SCREEN_HEIGHT
+        ):
+
             movements.append(
                 (
                     x,
@@ -183,7 +184,11 @@ def _build_swipe_coordinates():
         # 向上
         # ----------------------------
 
-        if y - vertical_distance >= 0:
+        if (
+            y - vertical_distance
+            >= 0
+        ):
+
             movements.append(
                 (
                     x,
@@ -196,7 +201,72 @@ def _build_swipe_coordinates():
     return movements
 
 
-SWIPE_COORDINATES = _build_swipe_coordinates()
+SWIPE_COORDINATES = (
+    _build_swipe_coordinates()
+)
+
+
+# ============================================================
+# Semantic aliases
+#
+# TURN_* 不建立新的座標。
+#
+# 直接使用既有全螢幕 SWIPE 座標，
+# 只是提供 Cyber-Fly semantic vocabulary
+# 的相容名稱。
+# ============================================================
+
+SEMANTIC_ALIASES = {
+
+    "TURN_LEFT": "SWIPE_LEFT",
+
+    "TURN_RIGHT": "SWIPE_RIGHT",
+
+    "TURN_FORWARD": "SWIPE_UP",
+
+    "TURN_BACKWARD": "SWIPE_DOWN",
+}
+
+
+# ============================================================
+# Directional SWIPE coordinates
+#
+# 從全螢幕 SWIPE 座標中分離方向。
+# ============================================================
+
+SWIPE_LEFT_COORDINATES = []
+SWIPE_RIGHT_COORDINATES = []
+SWIPE_UP_COORDINATES = []
+SWIPE_DOWN_COORDINATES = []
+
+
+for movement in SWIPE_COORDINATES:
+
+    x1, y1, x2, y2 = movement
+
+    if x2 < x1:
+
+        SWIPE_LEFT_COORDINATES.append(
+            movement
+        )
+
+    elif x2 > x1:
+
+        SWIPE_RIGHT_COORDINATES.append(
+            movement
+        )
+
+    elif y2 < y1:
+
+        SWIPE_UP_COORDINATES.append(
+            movement
+        )
+
+    elif y2 > y1:
+
+        SWIPE_DOWN_COORDINATES.append(
+            movement
+        )
 
 
 # ============================================================
@@ -205,17 +275,42 @@ SWIPE_COORDINATES = _build_swipe_coordinates()
 
 COORDINATES = {
 
-    # 全螢幕點擊
-    "CLICK": ACTION_COORDINATES,
+    "CLICK":
+        ACTION_COORDINATES,
 
-    # 全螢幕雙擊
-    "DOUBLE_CLICK": ACTION_COORDINATES,
+    "DOUBLE_CLICK":
+        ACTION_COORDINATES,
 
-    # 全螢幕長按
-    "LONG_PRESS": ACTION_COORDINATES,
+    "LONG_PRESS":
+        ACTION_COORDINATES,
 
-    # 全螢幕四方向滑動
-    "SWIPE": SWIPE_COORDINATES,
+    "SWIPE":
+        SWIPE_COORDINATES,
+
+    "SWIPE_LEFT":
+        SWIPE_LEFT_COORDINATES,
+
+    "SWIPE_RIGHT":
+        SWIPE_RIGHT_COORDINATES,
+
+    "SWIPE_UP":
+        SWIPE_UP_COORDINATES,
+
+    "SWIPE_DOWN":
+        SWIPE_DOWN_COORDINATES,
+
+    # TURN aliases
+    "TURN_LEFT":
+        SWIPE_LEFT_COORDINATES,
+
+    "TURN_RIGHT":
+        SWIPE_RIGHT_COORDINATES,
+
+    "TURN_FORWARD":
+        SWIPE_UP_COORDINATES,
+
+    "TURN_BACKWARD":
+        SWIPE_DOWN_COORDINATES,
 }
 
 
@@ -224,14 +319,32 @@ COORDINATES = {
 # ============================================================
 
 SUPPORTED_SEMANTICS = (
+
     "NONE",
+
     "CLICK",
     "DOUBLE_CLICK",
     "LONG_PRESS",
+
     "RELEASE",
+
     "SWIPE",
+
+    "SWIPE_LEFT",
+    "SWIPE_RIGHT",
+    "SWIPE_UP",
+    "SWIPE_DOWN",
+
+    "TURN_LEFT",
+    "TURN_RIGHT",
+    "TURN_FORWARD",
+    "TURN_BACKWARD",
 )
 
+
+# ============================================================
+# Special semantics
+# ============================================================
 
 NO_ACTION_SEMANTICS = {
     "NONE",
@@ -244,25 +357,56 @@ RELEASE_SEMANTICS = {
 
 
 # ============================================================
-# Public API
+# Semantic normalization
+# ============================================================
+
+def normalize_semantic(semantic):
+
+    if not isinstance(
+        semantic,
+        str,
+    ):
+
+        return None
+
+    semantic = (
+        semantic
+        .strip()
+        .upper()
+    )
+
+    return SEMANTIC_ALIASES.get(
+        semantic,
+        semantic,
+    )
+
+
+# ============================================================
+# Supported semantic
 # ============================================================
 
 def is_supported_semantic(semantic):
-    """
-    判斷語意是否支援。
-    """
 
-    return semantic in SUPPORTED_SEMANTICS
+    semantic = normalize_semantic(
+        semantic
+    )
 
+    return (
+        semantic in SUPPORTED_SEMANTICS
+    )
+
+
+# ============================================================
+# Coordinate lookup
+# ============================================================
 
 def get_coordinates(semantic):
-    """
-    取得指定語意的座標。
 
-    Bridge 原本 API 不變。
-    """
+    semantic = normalize_semantic(
+        semantic
+    )
 
-    if not is_supported_semantic(semantic):
+    if semantic is None:
         return None
 
     if semantic in NO_ACTION_SEMANTICS:
@@ -271,4 +415,6 @@ def get_coordinates(semantic):
     if semantic in RELEASE_SEMANTICS:
         return None
 
-    return COORDINATES.get(semantic)
+    return COORDINATES.get(
+        semantic
+    )

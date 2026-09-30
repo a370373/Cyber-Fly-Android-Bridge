@@ -17,12 +17,6 @@ coordinates.py
 
 # ============================================================
 # 一般操作座標
-#
-# CLICK
-# DOUBLE_CLICK
-# LONG_PRESS
-#
-# 共用同一組可操作座標。
 # ============================================================
 
 ACTION_COORDINATES = [
@@ -44,23 +38,14 @@ ACTION_COORDINATES = [
 
 
 # ============================================================
-# SWIPE 起始座標
-#
-# SWIPE 會以這個位置作為起點，
-# Bridge 再依照自己的 SWIPE 邏輯產生終點。
+# SWIPE
 # ============================================================
 
 SWIPE_START = (613, 1076)
 
 
 # ============================================================
-# MOVE 方向
-#
-# 格式：
-#
-#     (start_x, start_y, end_x, end_y)
-#
-# 這些是實機測量得到的方向座標。
+# MOVE
 # ============================================================
 
 MOVE_COORDINATES = {
@@ -88,18 +73,27 @@ MOVE_COORDINATES = {
 
 
 # ============================================================
+# TURN -> MOVE semantic aliases
+#
+# TURN_* 不建立新的座標。
+#
+# 它們直接使用既有 MOVE_* 實機座標。
+#
+# 這只是 platform-independent semantic vocabulary
+# 的相容層，不代表 Bridge 解讀 MaleCNS 的真正意圖。
+# ============================================================
+
+SEMANTIC_ALIASES = {
+
+    "TURN_FORWARD": "MOVE_FORWARD",
+    "TURN_BACKWARD": "MOVE_BACKWARD",
+    "TURN_LEFT": "MOVE_LEFT",
+    "TURN_RIGHT": "MOVE_RIGHT",
+}
+
+
+# ============================================================
 # Semantic -> Coordinates
-#
-# Bridge 可以直接從這裡取得語意對應的座標。
-#
-# NONE：
-#     不需要座標。
-#
-# RELEASE：
-#     不需要座標。
-#
-# 未支援語意：
-#     Bridge 忽略。
 # ============================================================
 
 COORDINATES = {
@@ -129,26 +123,48 @@ COORDINATES = {
     "MOVE_RIGHT": [
         MOVE_COORDINATES["MOVE_RIGHT"],
     ],
+
+    # TURN_* 使用既有 MOVE 座標
+    "TURN_FORWARD": [
+        MOVE_COORDINATES["MOVE_FORWARD"],
+    ],
+
+    "TURN_BACKWARD": [
+        MOVE_COORDINATES["MOVE_BACKWARD"],
+    ],
+
+    "TURN_LEFT": [
+        MOVE_COORDINATES["MOVE_LEFT"],
+    ],
+
+    "TURN_RIGHT": [
+        MOVE_COORDINATES["MOVE_RIGHT"],
+    ],
 }
 
 
 # ============================================================
-# Semantic information
-#
-# 方便 Bridge / 除錯程式確認目前有哪些可用語意。
+# Supported semantics
 # ============================================================
 
 SUPPORTED_SEMANTICS = (
     "NONE",
+
     "CLICK",
     "DOUBLE_CLICK",
     "LONG_PRESS",
     "RELEASE",
     "SWIPE",
+
     "MOVE_FORWARD",
     "MOVE_BACKWARD",
     "MOVE_LEFT",
     "MOVE_RIGHT",
+
+    "TURN_FORWARD",
+    "TURN_BACKWARD",
+    "TURN_LEFT",
+    "TURN_RIGHT",
 )
 
 
@@ -167,10 +183,29 @@ RELEASE_SEMANTICS = {
 
 
 # ============================================================
-# Unsupported semantics
-#
-# 不在 SUPPORTED_SEMANTICS 裡的語意，
-# Bridge 不執行任何 Android 操作。
+# Semantic normalization
+# ============================================================
+
+def normalize_semantic(semantic):
+    """
+    將語意正規化。
+
+    TURN_* 是 MOVE_* 的語意別名。
+    """
+
+    if not isinstance(semantic, str):
+        return None
+
+    semantic = semantic.strip().upper()
+
+    return SEMANTIC_ALIASES.get(
+        semantic,
+        semantic,
+    )
+
+
+# ============================================================
+# Supported semantic check
 # ============================================================
 
 def is_supported_semantic(semantic):
@@ -178,8 +213,14 @@ def is_supported_semantic(semantic):
     判斷語意是否受到目前 Bridge 支援。
     """
 
+    semantic = normalize_semantic(semantic)
+
     return semantic in SUPPORTED_SEMANTICS
 
+
+# ============================================================
+# Coordinate lookup
+# ============================================================
 
 def get_coordinates(semantic):
     """
@@ -188,11 +229,16 @@ def get_coordinates(semantic):
     NONE / RELEASE：
         回傳 None。
 
+    TURN_*：
+        使用對應 MOVE_* 的座標。
+
     未支援：
         回傳 None。
     """
 
-    if not is_supported_semantic(semantic):
+    semantic = normalize_semantic(semantic)
+
+    if semantic is None:
         return None
 
     if semantic in NO_ACTION_SEMANTICS:

@@ -27,7 +27,7 @@ coordinates.py
         ↓
 Android UID 2000 Shell
         ↓
-     input
+     /system/bin/input
 
 
 核心原則：
@@ -101,6 +101,21 @@ Android action mapping：
         → MOVE_RIGHT
 
 
+TURN action compatibility：
+
+    turn_forward
+        → MOVE_FORWARD
+
+    turn_backward
+        → MOVE_BACKWARD
+
+    turn_left
+        → MOVE_LEFT
+
+    turn_right
+        → MOVE_RIGHT
+
+
 Unsupported Cyber-Fly actions：
 
     ignored
@@ -119,6 +134,31 @@ Unsupported Cyber-Fly actions：
 
     只有真正的 FFmpeg / decoder / scrcpy
     故障才會觸發相應的重建。
+
+
+Android command execution：
+
+    不使用：
+
+        subprocess(..., shell=True)
+
+    原因：
+
+        shell=True
+        ↓
+        Termux /data/data/com.termux/files/usr/bin/sh
+        ↓
+        UID 2000
+        ↓
+        Permission denied
+
+    因此 Android input 統一使用：
+
+        /system/bin/input
+        + argv
+        + shell=False
+
+    直接執行 Android system input binary。
 """
 
 import base64
@@ -174,20 +214,25 @@ PYTHON_STDLIB_DIR = str(
 
 
 # ============================================================
-# Bundled Runtime Environment
+# Android System Commands
 # ============================================================
 
-# ============================================================
-# Python Runtime Environment
-#
-# Python keeps its own bundled runtime libraries.
-#
 # IMPORTANT:
 #
-# FFmpeg libraries are NOT placed into the global
-# LD_LIBRARY_PATH.
+# Never use shell=True for Android input commands.
 #
-# FFmpeg receives its own isolated environment below.
+# UID 2000 cannot execute the Termux shell:
+#
+#     /data/data/com.termux/files/usr/bin/sh
+#
+# Therefore Android commands are executed directly through
+# the Android system binary.
+#
+ANDROID_INPUT = "/system/bin/input"
+
+
+# ============================================================
+# Bundled Runtime Environment
 # ============================================================
 
 _existing_ld_library_path = os.environ.get(
@@ -220,9 +265,6 @@ os.environ["LD_LIBRARY_PATH"] = ":".join(
 #     bundled FFmpeg libraries
 #
 # without changing the Python process environment.
-#
-# Android system paths come first so bundled Android .so files
-# do not accidentally override the real system libraries.
 # ============================================================
 
 FFMPEG_ENV = os.environ.copy()
@@ -253,7 +295,7 @@ MAX_MESSAGE_SIZE = 16 * 1024 * 1024
 SCRCPY_HOST = "127.0.0.1"
 SCRCPY_PORT = 1234
 
-TEST_MODE = True
+TEST_MODE = False
 
 JPEG_QUALITY = 5
 
@@ -516,11 +558,32 @@ def execute_command(
 
         return None
 
+    # --------------------------------------------------------
+    # IMPORTANT:
+    #
+    # command MUST be a list/argv.
+    #
+    # shell=False is intentional.
+    #
+    # This prevents Python from invoking:
+    #
+    #     /data/data/com.termux/files/usr/bin/sh
+    #
+    # which is not executable by UID 2000.
+    # --------------------------------------------------------
+
+    if isinstance(command, str):
+
+        raise TypeError(
+            "Android commands must use argv list, "
+            "not shell command strings"
+        )
+
     if wait:
 
         return subprocess.run(
             command,
-            shell=True,
+            shell=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -528,9 +591,25 @@ def execute_command(
 
     return subprocess.Popen(
         command,
-        shell=True,
+        shell=False,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+    )
+
+
+def android_input(*args, wait=False):
+
+    command = [
+        ANDROID_INPUT,
+        *[
+            str(arg)
+            for arg in args
+        ],
+    ]
+
+    return execute_command(
+        command,
+        wait=wait,
     )
 
 
@@ -576,6 +655,53 @@ def choose_move_coordinate(
     start, end = move
 
     return start, end
+
+
+# ============================================================
+# Semantic Compatibility
+# ============================================================
+
+TURN_SEMANTIC_ALIASES = {
+    "TURN_FORWARD": "MOVE_FORWARD",
+    "TURN_BACKWARD": "MOVE_BACKWARD",
+    "TURN_LEFT": "MOVE_LEFT",
+    "TURN_RIGHT": "MOVE_RIGHT",
+}
+
+
+def normalize_semantic(
+    semantic
+):
+
+    if not isinstance(
+        semantic,
+        str,
+    ):
+
+        return semantic
+
+    semantic = (
+        semantic
+        .strip()
+        .upper()
+    )
+
+    mapped = TURN_SEMANTIC_ALIASES.get(
+        semantic
+    )
+
+    if mapped is not None:
+
+        print(
+            "[SEMANTIC]",
+            semantic,
+            "->",
+            mapped,
+        )
+
+        return mapped
+
+    return semantic
 
 
 # ============================================================
@@ -651,12 +777,15 @@ def hold_at_position(
     y,
 ):
 
-    command = (
-        f"input swipe "
-        f"{x} {y} "
-        f"{x} {y} "
-        f"{HOLD_DURATION}"
-    )
+    command = [
+        ANDROID_INPUT,
+        "swipe",
+        str(x),
+        str(y),
+        str(x),
+        str(y),
+        str(HOLD_DURATION),
+    ]
 
     if TEST_MODE:
 
@@ -679,7 +808,7 @@ def hold_at_position(
 
             process = subprocess.Popen(
                 command,
-                shell=True,
+                shell=False,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
@@ -736,12 +865,15 @@ def move_worker(action):
         SWIPE_DURATION_MAX,
     )
 
-    slide_command = (
-        f"input swipe "
-        f"{start_x} {start_y} "
-        f"{end_x} {end_y} "
-        f"{duration}"
-    )
+    slide_command = [
+        ANDROID_INPUT,
+        "swipe",
+        str(start_x),
+        str(start_y),
+        str(end_x),
+        str(end_y),
+        str(duration),
+    ]
 
     print(
         f"[MOVE] "
@@ -760,10 +892,15 @@ def move_worker(action):
 
         print(
             "[ANDROID]",
-            f"input swipe "
-            f"{end_x} {end_y} "
-            f"{end_x} {end_y} "
-            f"{HOLD_DURATION}"
+            [
+                ANDROID_INPUT,
+                "swipe",
+                str(end_x),
+                str(end_y),
+                str(end_x),
+                str(end_y),
+                str(HOLD_DURATION),
+            ],
         )
 
         while not action.stop_event.wait(
@@ -778,7 +915,7 @@ def move_worker(action):
 
         process = subprocess.Popen(
             slide_command,
-            shell=True,
+            shell=False,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -887,12 +1024,15 @@ def execute_swipe(
         SWIPE_DURATION_MAX,
     )
 
-    command = (
-        f"input swipe "
-        f"{start_x} {start_y} "
-        f"{end_x} {end_y} "
-        f"{duration}"
-    )
+    command = [
+        ANDROID_INPUT,
+        "swipe",
+        str(start_x),
+        str(start_y),
+        str(end_x),
+        str(end_y),
+        str(duration),
+    ]
 
     print(
         f"[SWIPE] "
@@ -915,7 +1055,7 @@ def execute_swipe(
 
         subprocess.Popen(
             command,
-            shell=True,
+            shell=False,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -1015,8 +1155,10 @@ def execute_click(
 
     x, y = coordinate
 
-    execute_command(
-        f"input tap {x} {y}"
+    android_input(
+        "tap",
+        x,
+        y,
     )
 
 
@@ -1030,16 +1172,20 @@ def execute_double_click(
 
     x, y = coordinate
 
-    execute_command(
-        f"input tap {x} {y}"
+    android_input(
+        "tap",
+        x,
+        y,
     )
 
     time.sleep(
         DOUBLE_CLICK_INTERVAL
     )
 
-    execute_command(
-        f"input tap {x} {y}"
+    android_input(
+        "tap",
+        x,
+        y,
     )
 
 
@@ -1098,10 +1244,8 @@ def handle_semantic(
 
         return
 
-    semantic = (
+    semantic = normalize_semantic(
         semantic
-        .strip()
-        .upper()
     )
 
     print(
@@ -1666,15 +1810,6 @@ def send_rgb_frame(
         ).decode("ascii"),
     }
 
-    # IMPORTANT:
-    #
-    # False here means Cyber-Fly is offline.
-    #
-    # It does NOT mean:
-    #   - restart FFmpeg
-    #   - restart decoder
-    #   - restart scrcpy
-    #
     return send_to_cyberfly(
         message
     )
@@ -1682,13 +1817,6 @@ def send_rgb_frame(
 
 # ============================================================
 # Scrcpy Pipeline
-#
-# One persistent pipeline generation.
-#
-# IMPORTANT:
-#
-# Cyber-Fly connection status is NEVER used as a
-# pipeline health signal.
 # ============================================================
 
 class ScrcpyPipeline:
@@ -1772,20 +1900,12 @@ class ScrcpyPipeline:
             stderr=subprocess.PIPE,
             bufsize=0,
             env=FFMPEG_ENV,
+            shell=False,
         )
 
         print(
             "[FFMPEG] H264 -> MJPEG started"
         )
-
-        # ----------------------------------------------------
-        # IMPORTANT DEBUG:
-        #
-        # FFmpeg stderr must be drained continuously.
-        #
-        # Otherwise the stderr pipe can fill and FFmpeg may
-        # block even though stdout looks alive.
-        # ----------------------------------------------------
 
         self.ffmpeg_error_thread = threading.Thread(
             target=self.read_process_error,
@@ -1838,15 +1958,12 @@ class ScrcpyPipeline:
             stderr=subprocess.PIPE,
             bufsize=0,
             env=FFMPEG_ENV,
+            shell=False,
         )
 
         print(
             "[FFMPEG] MJPEG -> RGB24 started"
         )
-
-        # ----------------------------------------------------
-        # IMPORTANT DEBUG:
-        # ----------------------------------------------------
 
         self.decoder_error_thread = threading.Thread(
             target=self.read_process_error,
@@ -2053,9 +2170,6 @@ class ScrcpyPipeline:
                     OSError,
                 ):
 
-                    # FFmpeg died.
-                    #
-                    # This is NOT a scrcpy failure.
                     self.failure_reason = (
                         "FFmpeg stdin closed"
                     )
@@ -2370,11 +2484,6 @@ class ScrcpyPipeline:
                         :frame_size
                     ]
 
-                    # Cyber-Fly offline is allowed.
-                    #
-                    # send_rgb_frame() returning False
-                    # does NOT stop this pipeline.
-
                     send_rgb_frame(
                         frame,
                         self.width,
@@ -2543,13 +2652,6 @@ class ScrcpyPipeline:
 
     # --------------------------------------------------------
     # Run
-    #
-    # IMPORTANT:
-    #
-    # We DO NOT restart simply because a random worker
-    # thread disappears.
-    #
-    # We wait for an actual pipeline failure.
     # --------------------------------------------------------
 
     def run(self):
@@ -2614,10 +2716,6 @@ class ScrcpyPipeline:
                 self.decoder_process
             )
 
-            # ------------------------------------------------
-            # Real process failure
-            # ------------------------------------------------
-
             if (
                 ffmpeg_process is None
                 or ffmpeg_process.poll() is not None
@@ -2668,10 +2766,6 @@ class ScrcpyPipeline:
 
                 break
 
-            # ------------------------------------------------
-            # Real scrcpy failure
-            # ------------------------------------------------
-
             if self.stream.socket_lost:
 
                 self.failure_reason = (
@@ -2681,15 +2775,6 @@ class ScrcpyPipeline:
                 self.stop_event.set()
 
                 break
-
-            # ------------------------------------------------
-            # Worker health
-            #
-            # Do NOT immediately restart because one thread
-            # disappeared.
-            #
-            # Give the remaining pipeline a moment to settle.
-            # ------------------------------------------------
 
             if (
                 not self.input_thread.is_alive()
@@ -2865,15 +2950,7 @@ class ScrcpyStream:
 
             try:
 
-                # --------------------------------------------
-                # Connect relay
-                # --------------------------------------------
-
                 self.connect()
-
-                # --------------------------------------------
-                # Pipeline lifecycle
-                # --------------------------------------------
 
                 while (
                     not shutdown_event.is_set()
@@ -2889,10 +2966,6 @@ class ScrcpyStream:
 
                         break
 
-                    # ----------------------------------------
-                    # scrcpy itself died
-                    # ----------------------------------------
-
                     if self.socket_lost:
 
                         print(
@@ -2901,13 +2974,6 @@ class ScrcpyStream:
                         )
 
                         break
-
-                    # ----------------------------------------
-                    # FFmpeg / decoder failure
-                    #
-                    # Keep scrcpy socket.
-                    # Rebuild only pipeline.
-                    # ----------------------------------------
 
                     print(
                         "[PIPELINE] "
@@ -3013,10 +3079,6 @@ def cli_loop():
 
     print(
         "  move right"
-    )
-
-    print(
-        "  release"
     )
 
     print(
@@ -3281,6 +3343,11 @@ def main():
     )
 
     print(
+        f"Android input    : "
+        f"{ANDROID_INPUT}"
+    )
+
+    print(
         f"TEST_MODE        : "
         f"{TEST_MODE}"
     )
@@ -3327,6 +3394,21 @@ def main():
 
         print(
             f"        {FFMPEG_LIB_DIR}"
+        )
+
+        return 1
+
+    if not Path(
+        ANDROID_INPUT
+    ).is_file():
+
+        print(
+            "[ERROR] Android input binary "
+            "not found:"
+        )
+
+        print(
+            f"        {ANDROID_INPUT}"
         )
 
         return 1
