@@ -177,25 +177,61 @@ PYTHON_STDLIB_DIR = str(
 # Bundled Runtime Environment
 # ============================================================
 
+# ============================================================
+# Python Runtime Environment
+#
+# Python keeps its own bundled runtime libraries.
+#
+# IMPORTANT:
+#
+# FFmpeg libraries are NOT placed into the global
+# LD_LIBRARY_PATH.
+#
+# FFmpeg receives its own isolated environment below.
+# ============================================================
+
 _existing_ld_library_path = os.environ.get(
     "LD_LIBRARY_PATH",
     "",
 )
 
-_runtime_library_paths = [
-    FFMPEG_LIB_DIR,
+_python_library_paths = [
     PYTHON_LIB_DIR,
     PYTHON_STDLIB_DIR,
 ]
 
 if _existing_ld_library_path:
-    _runtime_library_paths.append(
+    _python_library_paths.append(
         _existing_ld_library_path
     )
 
 os.environ["LD_LIBRARY_PATH"] = ":".join(
-    _runtime_library_paths
+    _python_library_paths
 )
+
+
+# ============================================================
+# FFmpeg Runtime Environment
+#
+# FFmpeg must use:
+#
+#     Android system libraries
+#         +
+#     bundled FFmpeg libraries
+#
+# without changing the Python process environment.
+#
+# Android system paths come first so bundled Android .so files
+# do not accidentally override the real system libraries.
+# ============================================================
+
+FFMPEG_ENV = os.environ.copy()
+
+FFMPEG_ENV["LD_LIBRARY_PATH"] = ":".join([
+    "/system/lib64",
+    "/system/lib",
+    FFMPEG_LIB_DIR,
+])
 
 
 from coordinates import (
@@ -1735,6 +1771,7 @@ class ScrcpyPipeline:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             bufsize=0,
+            env=FFMPEG_ENV,
         )
 
         print(
@@ -1800,6 +1837,7 @@ class ScrcpyPipeline:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             bufsize=0,
+            env=FFMPEG_ENV,
         )
 
         print(
